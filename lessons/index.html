@@ -1,0 +1,209 @@
+﻿<!DOCTYPE html>
+<!--
+  ============================================================================
+  TEMPLATE MỤC LỤC /teach (lessons/index.html).
+  Lộ trình toàn diện: JavaScript Core Mastery for Frontend Interview (2025/2026)
+  ============================================================================
+-->
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lộ trình JavaScript Core for Frontend Interview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+<style>
+  .hero { text-align: center; margin-bottom: 14px; }
+  .hero h1 { font-size: 2.4rem; }
+  .progress-wrap { margin: 26px 0 40px; }
+  .progress-bar { height: 10px; background: var(--bg-card); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 999px; }
+  .progress-label { text-align: center; color: var(--text-dim); font-size: 14px; margin-top: 8px; }
+  .module { margin: 30px 0; }
+  .module-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  .module-num { font-family: var(--mono); color: var(--accent); font-weight: 600; font-size: 14px; }
+  .module-head h2 { border: none; margin: 14px 0 2px; padding: 0; font-size: 1.35rem; }
+  .module-why { color: var(--text-dim); font-size: 14px; margin: 0 0 12px; }
+  .lessons-list { list-style: none; padding: 0; margin: 0; }
+  .lessons-list li { margin: 6px 0; }
+  .lessons-list a, .lessons-list span.soon {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--bg-soft); font-size: 15px;
+  }
+  .lessons-list a { color: var(--text); text-decoration: none; }
+  .lessons-list a:hover { border-color: var(--accent); background: var(--bg-card); }
+  .lessons-list span.soon { color: var(--text-dim); border-style: dashed; }
+  .badge { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 6px; flex-shrink: 0; }
+  .badge.done { background: rgba(74,222,128,.15); color: var(--green); }
+  .badge.now  { background: rgba(56,189,248,.15); color: var(--accent); }
+  .badge.soon { background: #232838; color: var(--text-dim); }
+  .badge.interview { background: rgba(244,63,94,.15); color: #fb7185; }
+  .lcount { margin-left: auto; font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+  .intro-card { background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid var(--accent-2); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <span class="lesson-tag">⚡ JavaScript Core · Frontend Interview Mastery (2025/2026)</span>
+    <h1>Lộ trình JavaScript Core</h1>
+    <p class="subtitle">Chinh phục bản chất JavaScript Runtime, V8 Engine và các câu hỏi phỏng vấn hóc búa từ Junior+ đến Senior/Lead.</p>
+  </div>
+
+  <div class="intro-card">
+    <strong>Tôn chỉ học tập:</strong> Hiểu sâu bản chất tầng dưới (Under the hood), trích dẫn chuẩn ECMAScript & V8 Docs, rèn luyện kỹ năng live-coding polyfills kinh điển và trả lời phỏng vấn theo phương pháp Top-Down chuẩn mực.
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill" style="width: 0%"></div></div>
+    <div class="progress-label">0 / ~39 bài · Sẵn sàng khởi động</div>
+  </div>
+
+  <!-- MODULE 00 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 00</span></div>
+    <h2>Thiết lập môi trường & Sân tập (Playground Setup)</h2>
+    <p class="module-why">Chuẩn bị môi trường thực hành độc lập với Node.js 22+, Vitest, Chrome DevTools Memory Snapshot và công cụ soi AST để không bao giờ học lý thuyết "chay".</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 00</span> Khởi tạo sân tập JavaScript Core & Vitest Test Runner <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 01 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 01</span></div>
+    <h2>Kiểu dữ liệu, Memory Model & Type Coercion</h2>
+    <p class="module-why">Gốc rễ của mọi lỗi runtime bí ẩn và các câu hỏi trick trong phỏng vấn: phân bổ Call Stack vs Memory Heap, thuật toán ToPrimitive và so sánh bằng.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 01</span> Primitive vs Reference Types & Mô hình bộ nhớ Call Stack vs Heap <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 02</span> Bản chất Type Coercion: Thuật toán ToPrimitive, ToNumber, ToString (ECMA-262) <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 03</span> So sánh bằng: `==` vs `===` vs `Object.is()` & Bẫy `NaN`, `null`, `undefined` <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 04</span> Symbol (Well-known symbols), BigInt & Immutability vs Mutation <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 02 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 02</span></div>
+    <h2>Execution Context, Scope Chain & Closures</h2>
+    <p class="module-why">Cách JavaScript Engine "nhìn" và thực thi mã nguồn: cơ chế tạo môi trường từ vựng, quản lý biến và sức mạnh của closures trong thiết kế module.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 05</span> Execution Context: Creation Phase vs Execution Phase & Variable Object <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 06</span> Hoisting, Temporal Dead Zone (TDZ) & Sự khác biệt `var` vs `let` vs `const` <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 07</span> Lexical Environment, Scope Chain & Bản chất Closures <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 08</span> Ứng dụng Closures: Module Pattern, Private State & Memory Leaks Hunting <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 03 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 03</span></div>
+    <h2>Objects, Prototype Chain & Meta-Programming</h2>
+    <p class="module-why">Mô hình hướng đối tượng dựa trên prototype đặc trưng của JavaScript và siêu lập trình với Proxy/Reflect — nền tảng của Vue 3 và Signals.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 09</span> Prototype Chain: Phân biệt `prototype` vs `__proto__` vs `[[Prototype]]` <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 10</span> Function Constructor, `new` Operator Internals & `Object.create()` <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 11</span> Prototypal Inheritance vs ES6 Classes, `super` & Private Fields (`#field`) <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 12</span> `Proxy` & `Reflect` API: Meta-programming, Traps & Cơ chế Reactivity (Vue 3 / Signals) <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 04 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 04</span></div>
+    <h2>Cơ chế `this` & Function Internals</h2>
+    <p class="module-why">Nắm trọn 4 quy tắc xác định `this`, sự khác biệt của Arrow Functions và cách tự tay implement các hàm thao tác context.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 13</span> 4 Quy tắc xác định `this` (Default, Implicit, Explicit, New) & Strict Mode <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 14</span> Arrow Functions & Lexical `this` (Tại sao không có `arguments`, `prototype`, `new`) <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 15</span> Live-coding Polyfills: Tự viết `Function.prototype.call`, `apply` và `bind` <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 05 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 05</span></div>
+    <h2>Bất đồng bộ, Event Loop & Concurrency Control</h2>
+    <p class="module-why">Trái tim của JavaScript runtime: phân biệt rạch ròi Microtask, Macrotask, Animation Frame, Promise internals, AbortController và Concurrency Limiter.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 16</span> Kiến trúc Event Loop trên Trình duyệt & Node.js (Call Stack, Task Queue, Microtask Queue) <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 17</span> Thứ tự thực thi: Microtasks vs Macrotasks vs `requestAnimationFrame` vs `queueMicrotask` <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 18</span> Promise Architecture: State Machine, `.then` Chaining & Error Propagation <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 19</span> Live-coding Polyfills: `Promise.all`, `allSettled`, `race`, `any`, `Promise.withResolvers` <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 20</span> `AbortController` & `AbortSignal`: Hủy request, xử lý Race Conditions & Stale responses <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 21</span> Live-coding: Cài đặt Async Pool / Concurrency Limiter (`p-limit` / Task Queue) <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 22</span> Async / Await dưới lăng kính Generators & Iterators (De-sugaring async functions) <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 06 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 06</span></div>
+    <h2>Functional Programming & Utility Polyfills (Live-Coding Phỏng Vấn)</h2>
+    <p class="module-why">Bộ công cụ các bài test live-coding phổ biến nhất trong mọi vòng Technical Interview của các công ty Big Tech và Product.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 23</span> Pure Functions, Currying & Partial Application <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 24</span> Live-coding: Cài đặt `debounce` & `throttle` (Leading, Trailing & Cancel options) <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 25</span> Live-coding: Tự viết `deepClone` (Xử lý Circular References, Date, RegExp, Map/Set) vs `structuredClone` <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 26</span> Live-coding: Cài đặt `EventEmitter` (Pub/Sub pattern) & `pipe`/`compose` <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 27</span> Live-coding: Memoize function & LRU Cache implementation bằng JavaScript <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 28</span> Live-coding: `flatten` (Array/Object lồng nhau) & `deepEqual` implementation <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 07 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 07</span></div>
+    <h2>DOM, Browser Engine & Web APIs</h2>
+    <p class="module-why">Cách trình duyệt phân tích và render trang web: Critical Rendering Path, Layout Thrashing, Event Propagation và xử lý đa luồng trên Web.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 29</span> Critical Rendering Path: HTML/CSS Parser -> DOM/CSSOM -> Render Tree -> Layout -> Paint -> Composite <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 30</span> Event Propagation: Bubbling vs Capturing, Event Delegation & `passive: true` listeners <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 31</span> Layout Thrashing, Repaint, Reflow & Tối ưu hiệu năng DOM Rendering <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 32</span> Web Workers, Service Workers, Cache API & Đa luồng trên Browser <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 08 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 08</span></div>
+    <h2>V8 Engine Internals & Tối ưu hóa bộ nhớ</h2>
+    <p class="module-why">Hiểu cách V8 biên dịch và tối ưu mã JavaScript để viết code thân thiện với bộ biên dịch JIT, quản lý bộ nhớ yếu với WeakRef/FinalizationRegistry.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 33</span> V8 Engine Pipeline: Ignition (Interpreter) & TurboFan (JIT Compiler), Deoptimization <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 34</span> Hidden Classes (Shapes) & Inline Caching (Monomorphic vs Polymorphic vs Megamorphic) <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 35</span> Garbage Collection trong V8 & Quản lý bộ nhớ với `WeakMap`, `WeakSet`, `WeakRef` <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 09 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 09</span></div>
+    <h2>Module Systems & Modern Tooling Under The Hood</h2>
+    <p class="module-why">Cơ chế nạp module trong JavaScript: ESM vs CommonJS, dynamic import và xử lý phụ thuộc vòng tròn (Circular Dependencies).</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 36</span> ESM vs CommonJS (CJS): Live Bindings, Top-level `await` & Xử lý Circular Dependencies <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <!-- MODULE 10 -->
+  <div class="module">
+    <div class="module-head"><span class="module-num">Module 10</span></div>
+    <h2>Tổng ôn & Mock Interview thực chiến</h2>
+    <p class="module-why">Tổng hợp các câu hỏi hóc búa nhất trích từ phỏng vấn Meta, Google, Uber, ByteDance; giải mã bẫy code và phương pháp trả lời Top-Down / STAR.</p>
+    <ul class="lessons-list">
+      <li><span class="soon"><span class="badge soon">Bài 37</span> 50+ Câu hỏi Trắc nghiệm Code Output & Bẫy JavaScript kinh điển (Meta / Google / Uber) <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 38</span> Giả lập Live-Coding Interview: 3 bài toán phân loại ứng viên Senior/Lead <span class="lcount">sắp tới</span></span></li>
+      <li><span class="soon"><span class="badge soon">Bài 39</span> Kỹ năng giao tiếp trong phỏng vấn kỹ thuật: Phương pháp Top-Down, STAR & Làm chủ buổi phỏng vấn <span class="lcount">sắp tới</span></span></li>
+    </ul>
+  </div>
+
+  <p class="try-it" style="text-align:center; margin-top:40px;">
+    📌 Lộ trình <strong>co giãn</strong>: nắm nhanh thì gộp bài, vấp thì tách thêm bài luyện.<br>
+    Muốn thêm/bớt/đổi thứ tự — cứ nói với tôi (người dạy) bất cứ lúc nào.
+  </p>
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+﻿<!DOCTYPE html>
+<!--
+  ============================================================================
+  BÀI 00: Khởi tạo sân tập JavaScript Core & Vitest Test Runner
+  ============================================================================
+-->
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 00 · Khởi tạo sân tập JavaScript Core & Vitest Runner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 00 · Bài 00</span>
+  <h1>Khởi tạo sân tập JavaScript Core & Vitest Runner</h1>
+  <p class="subtitle">Thiết lập môi trường thực thi ESM độc lập, runner kiểm thử siêu tốc và công cụ chẩn đoán V8 để không bao giờ học lý thuyết "chay".</p>
+  <p class="meta-line">⏱ ~10 phút · 🎯 Mục tiêu: Sân tập thực hành chạy xanh 100% test case trên máy bạn (Node 22+, Vitest 4+).</p>
+
+  <!-- BẮC CẦU TỪ CÁI NGƯỜI HỌC ĐÃ BIẾT -->
+  <div class="callout bridge">
+    <div class="ct">🌉 Bắc cầu: Từ lập trình ứng dụng sang mổ xẻ Core Runtime</div>
+    <p>Khi làm dự án Frontend thông thường (React/Vue/Next.js), bạn thường để các bundler như Vite/Webpack lo liệu toàn bộ cấu hình bên dưới. Nhưng trong các buổi phỏng vấn kỹ thuật cấp cao (Senior/Lead), nhà tuyển dụng sẽ yêu cầu bạn <strong>giải thích và live-coding mã nguồn JavaScript thuần (Vanilla JS)</strong>, mổ xẻ từng byte trong bộ nhớ và cơ chế event loop. Bài 00 này dựng một <strong>sân tập thực chiến (Playground)</strong> độc lập giúp bạn kiểm chứng mọi giả thuyết code ngay lập tức.</p>
+  </div>
+
+  <h2>1. Kiểm tra tiền đề môi trường trên máy thật</h2>
+  <p>Môi trường của bạn đã có sẵn <strong>Node.js v22.22.2</strong> và <strong>npm v11.4.2</strong>. Node 22 hỗ trợ native ECMAScript Modules (ESM), Top-level <code>await</code>, và các Web APIs tiêu chuẩn (như <code>fetch</code>, <code>structuredClone</code>, <code>AbortController</code>, <code>queueMicrotask</code>) mà không cần thêm bất kỳ polyfill nào.</p>
+
+  <div class="code-block">
+    <span class="code-label">PowerShell / Terminal — Kiểm tra phiên bản</span>
+<pre><code><span class="cmt"># Kiểm tra phiên bản Node.js và npm</span>
+node -v   <span class="cmt"># Kết quả: v22.x.x</span>
+npm -v    <span class="cmt"># Kết quả: 11.x.x</span></code></pre>
+  </div>
+
+  <h2>2. Cấu trúc Sân tập & Cấu hình ESM (`"type": "module"`)</h2>
+  <p>Thư mục <code>practice/</code> được cấu hình là một Node ESM package chuẩn mực thông qua thuộc tính <code>"type": "module"</code> trong <code>package.json</code>. Điều này cho phép chúng ta dùng cú pháp <code>import / export</code> tự nhiên của JavaScript hiện đại mà không cần qua trình biên dịch Babel.</p>
+
+  <div class="code-block">
+    <span class="code-label">JSON — practice/package.json</span>
+<pre><code>{
+  <span class="str">"name"</span>: <span class="str">"js-core-practice"</span>,
+  <span class="str">"version"</span>: <span class="str">"1.0.0"</span>,
+  <span class="str">"type"</span>: <span class="str">"module"</span>,
+  <span class="str">"scripts"</span>: {
+    <span class="str">"test"</span>: <span class="str">"vitest run"</span>,
+    <span class="str">"test:watch"</span>: <span class="str">"vitest"</span>
+  },
+  <span class="str">"devDependencies"</span>: {
+    <span class="str">"vitest"</span>: <span class="str">"^4.1.11"</span>
+  }
+}</code></pre>
+  </div>
+
+  <div class="callout why">
+    <div class="ct">💡 Vì sao chọn Vitest thay vì Jest cho khoá học này?</div>
+    <p><strong>1. Tốc độ vượt trội:</strong> Vitest tận dụng kiến trúc biến đổi module tức thì qua worker threads của Vite, chạy test nhanh gấp 5-10 lần Jest.<br>
+    <strong>2. Native ESM:</strong> Không gặp các lỗi kinh điển về biến đổi cú pháp ESM / CommonJS mà Jest thường mắc phải.<br>
+    <strong>3. API tương thích 100%:</strong> Các hàm <code>describe</code>, <code>it</code>, <code>expect</code> hoàn toàn tương tự Jest, chuẩn mực cho mọi bài thi phỏng vấn live-coding.</p>
+  </div>
+
+  <h2>3. Viết Sanity Check & Chạy thử nghiệm</h2>
+  <p>File <code>practice/sanity.test.js</code> kiểm tra 3 điểm cốt lõi của JavaScript runtime:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript (ESM) — practice/sanity.test.js</span>
+<pre><code><span class="kw">import</span> { describe, it, expect } <span class="kw">from</span> <span class="str">"vitest"</span>;
+
+<span class="fn">describe</span>(<span class="str">"Sanity Check: Môi trường JavaScript Core & Vitest"</span>, () => {
+  <span class="fn">it</span>(<span class="str">"Kiểm tra phép toán số học cơ bản"</span>, () => {
+    <span class="cmt">// Đảm bảo runtime hoạt động chuẩn xác</span>
+    <span class="fn">expect</span>(<span class="num">1</span> + <span class="num">1</span>).<span class="fn">toBe</span>(<span class="num">2</span>);
+  });
+
+  <span class="fn">it</span>(<span class="str">"Kiểm tra kiểu dữ liệu JavaScript Core: typeof NaN là number"</span>, () => {
+    <span class="cmt">// NaN (Not-a-Number) trong chuẩn ECMA-262 vẫn mang kiểu primitive là 'number'</span>
+    <span class="fn">expect</span>(<span class="kw">typeof</span> NaN).<span class="fn">toBe</span>(<span class="str">"number"</span>);
+  });
+
+  <span class="fn">it</span>(<span class="str">"Kiểm tra cơ chế so sánh bằng nghiêm ngặt của Object.is"</span>, () => {
+    <span class="cmt">// Object.is phân biệt được +0 và -0, và nhận diện đúng NaN === NaN</span>
+    <span class="fn">expect</span>(Object.<span class="fn">is</span>(NaN, NaN)).<span class="fn">toBe</span>(<span class="kw">true</span>);
+    <span class="fn">expect</span>(Object.<span class="fn">is</span>(+<span class="num">0</span>, -<span class="num">0</span>)).<span class="fn">toBe</span>(<span class="kw">false</span>);
+  });
+});</code></pre>
+  </div>
+
+  <p>Chạy bộ test để xác nhận môi trường thực tế:</p>
+
+  <div class="code-block">
+    <span class="code-label">PowerShell — Chạy kiểm thử trong thư mục practice</span>
+<pre><code>cd practice
+npm test</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">🎯 Kết quả kiểm chứng thực tế (Đã test với Node 22.22 / Vitest 4.1.11)</div>
+    <pre><code> ✓ practice/sanity.test.js (3 tests) 417ms
+ Test Files  1 passed (1)
+      Tests  3 passed (3)</code></pre>
+  </div>
+
+  <!-- GÓC PHỎNG VẤN THỰC TẾ -->
+  <div class="callout why">
+    <div class="ct">🎙️ Góc phỏng vấn: ESM vs CommonJS & Tại sao `typeof NaN === "number"`?</div>
+    <p><strong>Câu hỏi 1:</strong> <em>"Tại sao trong JavaScript `typeof NaN` lại trả về `'number'` dù tên nó là Not-a-Number?"</em><br>
+    👉 <strong>Trả lời Senior:</strong> Theo chuẩn <a href="https://tc39.es/ecma262/#sec-ecmascript-language-types-number-type" target="_blank">ECMA-262 (Number type)</a> và chuẩn số thực dấu phẩy động <strong>IEEE 754</strong>, <code>NaN</code> là một giá trị đặc biệt thuộc tập số thực (Floating-Point Number) dùng để biểu thị kết quả của một phép tính toán học không hợp lệ (như <code>0 / 0</code> hoặc <code>Math.sqrt(-1)</code>). Vì thế kiểu dữ liệu gốc (primitive type) của nó vẫn là <code>number</code>.</p>
+    <hr style="border:none; border-top:1px dashed var(--border); margin:12px 0;">
+    <p><strong>Câu hỏi 2:</strong> <em>"Điểm khác nhau cơ bản giữa ESM (`import/export`) và CommonJS (`require/module.exports`) là gì?"</em><br>
+    👉 <strong>Trả lời Senior:</strong> ESM phân tích tĩnh (static analysis) lúc compile time, hỗ trợ <strong>Live Bindings</strong> (tham chiếu sống động tới giá trị được export) và hỗ trợ nạp bất đồng bộ. CommonJS nạp động lúc runtime, sao chép giá trị (value copy) tại thời điểm gọi hàm và chạy đồng bộ làm block luồng.</p>
+  </div>
+
+  <!-- QUIZ TƯƠNG TÁC -->
+  <div class="quiz">
+    <h3>🧠 Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Lệnh nào dưới đây giúp khởi chạy chế độ kiểm thử tự động xem lại code khi bạn lưu file (Watch Mode)?</div>
+    <button class="opt" data-correct="false" data-explain="Lệnh này chỉ chạy test một lần duy nhất rồi thoát ra.">A. npm test</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Script 'test:watch' gọi 'vitest' ở chế độ lắng nghe file thay đổi liên tục.">B. npm run test:watch (hoặc npx vitest)</button>
+    <button class="opt" data-correct="false" data-explain="Node thuần không tự tích hợp assertion test runner theo dõi file.">C. node practice/sanity.test.js</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>🧠 Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Biểu thức so sánh nào sau đây trả về `false` trong JavaScript?</div>
+    <button class="opt" data-correct="false" data-explain="Đúng trong JS: typeof NaN chính xác trả về 'number'.">A. typeof NaN === "number"</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Theo chuẩn IEEE 754, NaN là giá trị duy nhất trong JavaScript không bằng chính nó (NaN === NaN luôn ra false). Phải dùng Number.isNaN() hoặc Object.is()!">B. NaN === NaN</button>
+    <button class="opt" data-correct="false" data-explain="Object.is(NaN, NaN) được thiết kế đặc biệt để so sánh bằng giá trị chính xác và trả về true.">C. Object.is(NaN, NaN)</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">✅ Checklist nghiệm thu Bài 00</div>
+    <ul class="checklist">
+      <li>Đã nắm cấu trúc thư mục thực hành <code>practice/</code>.</li>
+      <li>Đã chạy lệnh <code>npm test</code> trong <code>practice/</code> và đạt 3/3 test passed.</li>
+      <li>Đã phân biệt được vì sao <code>typeof NaN === 'number'</code> và vì sao <code>NaN === NaN</code> ra <code>false</code>.</li>
+    </ul>
+  </div>
+
+  <!-- KẾT BÀI BẰNG CÂU HỎI TƯ DUY BẮC CẦU SANG BÀI 01 -->
+  <h2>4. Câu hỏi tư duy (Bắc cầu sang Bài 01)</h2>
+  <p>Quan sát đoạn code dưới đây và suy ngẫm:</p>
+  <div class="code-block">
+    <span class="code-label">JavaScript</span>
+<pre><code><span class="kw">let</span> a = { name: <span class="str">"Alice"</span> };
+<span class="kw">let</span> b = a;
+a.name = <span class="str">"Bob"</span>;
+console.<span class="fn">log</span>(b.name); <span class="cmt">// -> In ra "Bob"</span>
+
+<span class="kw">let</span> x = <span class="num">10</span>;
+<span class="kw">let</span> y = x;
+x = <span class="num">20</span>;
+console.<span class="fn">log</span>(y);      <span class="cmt">// -> In ra 10</span></code></pre>
+  </div>
+  <p>👉 <em>Điều gì thực sự diễn ra trong bộ nhớ máy tính (Call Stack vs Memory Heap) khi bạn gán một biến Object so với một biến số nguyên? Tại sao một bên bị biến đổi theo (mutated) còn một bên thì không?</em></p>
+
+  <!-- XEM TRƯỚC BÀI KẾ TIẾP -->
+  <div class="next-box">
+    <div class="nl">→ Bài tiếp theo</div>
+    <div class="nt">Bài 01 · Primitive vs Reference Types & Mô hình bộ nhớ Call Stack vs Heap</div>
+    <p class="nd">Mổ xẻ kiến trúc phân bổ bộ nhớ của V8 Engine, vẽ biểu đồ luồng tham chiếu biến và giải mã các câu hỏi phỏng vấn về Pass-by-value vs Pass-by-sharing.</p>
+  </div>
+
+  <!-- THANH ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="#" class="disabled">← Trước</a>
+    <a href="index.html">🏠 Mục lục</a>
+    <a href="#" class="disabled">Sau →</a>
+  </div>
+
+  <p class="try-it">💬 <strong>Tôi là người dạy của bạn.</strong> Hãy thử mở file bài học trong trình duyệt, chạy test thử trong thư mục <code>practice</code> và đặt câu hỏi cho tôi nếu có bất kỳ điểm nào bạn muốn làm sâu hơn!</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

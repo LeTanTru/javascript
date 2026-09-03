@@ -1,4 +1,4 @@
-﻿# Mission: JavaScript Core Mastery for Frontend Interview
+# Mission: JavaScript Core Mastery for Frontend Interview
 
 ## Why
 Nắm vững bản chất tầng sâu của JavaScript (Core Runtime, Memory Model, V8 Engine, Event Loop, Prototypal Chain, Async Internals) để tự tin vượt qua các vòng phỏng vấn kỹ thuật Frontend (Senior/Mid-level) tại các công ty công nghệ hàng đầu, đồng thời nâng cao khả năng debug, tối ưu hiệu năng và viết code JavaScript chuẩn mực trong các hệ thống quy mô lớn.
@@ -11,7 +11,7 @@ Nắm vững bản chất tầng sâu của JavaScript (Core Runtime, Memory Mod
 - Trình bày câu trả lời phỏng vấn theo phương pháp Top-Down / STAR mạch lạc, tư duy như một Senior/Lead Engineer.
 
 ## Parallel project
-Chờ xác nhận từ người học (chọn có hoặc không kèm dự án thực tế song song).
+Không — tập trung 100% vào sân tập practice/ và các bài toán phỏng vấn live-coding.
 
 ## Constraints
 - Học bằng tiếng Việt, giải thích sâu bản chất "vì sao" và "đánh đổi", không học vẹt cú pháp.

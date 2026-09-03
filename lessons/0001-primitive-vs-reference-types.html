@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  BÀI 01: Primitive vs Reference Types & Mô hình bộ nhớ Call Stack vs Heap
+  Lộ trình: JavaScript Core Mastery for Frontend Interview
+  ============================================================================
+-->
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 01 · Primitive vs Reference Types & Mô hình bộ nhớ Call Stack vs Heap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 01 · Bài 01</span>
+  <h1>Primitive vs Reference Types &amp; Mô hình bộ nhớ Call Stack vs Heap</h1>
+  <p class="subtitle">Giải mã cơ chế cấp phát bộ nhớ của V8 Engine, hiểu tận gốc Pass-by-value vs Pass-by-sharing và tự tin chinh phục các câu hỏi phỏng vấn kinh điển.</p>
+  <p class="meta-line">⏱ ~15 phút · 🎯 Mục tiêu: Vẽ được sơ đồ phân bổ ô nhớ Call Stack &amp; Memory Heap, phân biệt rạch ròi Mutation vs Reassignment, và vượt qua 100% câu hỏi bẫy về Copy/Tham chiếu.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 00 -->
+  <div class="callout bridge">
+    <div class="ct">🌉 Bắc cầu từ câu hỏi tư duy ở Bài 00</div>
+    <p>Ở cuối Bài 00, chúng ta đã bắt gặp một hiện tượng kỳ lạ:</p>
+    <div class="code-block" style="margin-top:8px;">
+      <span class="code-label">JavaScript</span>
+<pre><code><span class="kw">let</span> a = { name: <span class="str">"Alice"</span> };
+<span class="kw">let</span> b = a;
+a.name = <span class="str">"Bob"</span>;
+console.<span class="fn">log</span>(b.name); <span class="cmt">// -> In ra "Bob" (b bị thay đổi theo!)</span>
+
+<span class="kw">let</span> x = <span class="num">10</span>;
+<span class="kw">let</span> y = x;
+x = <span class="num">20</span>;
+console.<span class="fn">log</span>(y);      <span class="cmt">// -> In ra 10 (y hoàn toàn độc lập!)</span></code></pre>
+    </div>
+    <p>Tại sao cùng là phép gán bằng <code>=</code>, nhưng Object thì bị kéo theo (mutated), còn số nguyên thì hoàn toàn độc lập? Câu trả lời nằm ở <strong>mô hình tổ chức bộ nhớ</strong> bên trong JavaScript Engine.</p>
+  </div>
+
+  <h2>1. 7 Kiểu Primitive vs Reference Types (ECMA-262)</h2>
+  <p>Theo tài liệu đặc tả chuẩn <a href="https://tc39.es/ecma262/#sec-ecmascript-language-types" target="_blank">ECMA-262 (ECMAScript Language Types)</a>, hệ thống kiểu của JavaScript được chia làm hai nhóm đối lập hoàn toàn:</p>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Đặc điểm</th>
+        <th>Primitive Types (Kiểu nguyên thủy)</th>
+        <th>Reference Types (Kiểu tham chiếu)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Danh sách kiểu</strong></td>
+        <td><code>string</code>, <code>number</code>, <code>bigint</code>, <code>boolean</code>, <code>undefined</code>, <code>symbol</code>, <code>null</code> (7 kiểu)</td>
+        <td><code>Object</code> (và các biến thể: <code>Array</code>, <code>Function</code>, <code>Date</code>, <code>RegExp</code>, <code>Map</code>, <code>Set</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Tính bất biến (Immutability)</strong></td>
+        <td><strong>Bất biến (Immutable)</strong> — Không thể chỉnh sửa trực tiếp giá trị trong ô nhớ (mọi thao tác chuỗi/số đều tạo ra giá trị mới)</td>
+        <td><strong>Đột biến được (Mutable)</strong> — Có thể thêm, xóa, sửa thuộc tính trực tiếp trên đối tượng</td>
+      </tr>
+      <tr>
+        <td><strong>Nơi lưu trữ trong V8</strong></td>
+        <td>Lưu trữ trực tiếp trên <strong>Call Stack</strong> (giá trị cố định, kích thước xác định trước)</td>
+        <td>Cấp phát động trên <strong>Memory Heap</strong> (kích thước linh hoạt, có thể phình to)</td>
+      </tr>
+      <tr>
+        <td><strong>Phép gán biến (`=`)</strong></td>
+        <td>Sao chép toàn bộ <strong>giá trị thực tế (Value copy)</strong></td>
+        <td>Sao chép <strong>con trỏ địa chỉ bộ nhớ (Reference pointer)</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout why">
+    <div class="ct">💡 Vì sao Primitive lại là Immutable (Bất biến)?</div>
+    <p>Nhiều người lầm tưởng khai báo <code>let str = "hello"; str = "world";</code> là biến đổi chuỗi. Thực tế không phải: chuỗi <code>"hello"</code> trong ô nhớ cũ vẫn giữ nguyên, biến <code>str</code> chỉ được trỏ tới một ô nhớ mới chứa giá trị <code>"world"</code>. Bạn không thể làm <code>str[0] = "H"</code> để biến chữ thường thành chữ hoa — JavaScript sẽ âm thầm bỏ qua (hoặc ném lỗi trong <code>strict mode</code>).</p>
+  </div>
+
+  <h2>2. Kiến trúc bộ nhớ V8: Call Stack vs Memory Heap</h2>
+  <p>JavaScript Engine (như Google V8 trong Chrome và Node.js) chia không gian bộ nhớ thành 2 vùng chính:</p>
+
+  <ul>
+    <li><strong>Call Stack:</strong> Vùng nhớ có cấu trúc ngăn xếp (LIFO), truy xuất siêu tốc. Nơi lưu trữ <em>Execution Contexts</em>, các frame hàm đang chạy, và các biến primitive có kích thước cố định.</li>
+    <li><strong>Memory Heap:</strong> Vùng nhớ phi cấu trúc (Unstructured memory pool), nơi cấp phát bộ nhớ động cho các đối tượng (Objects, Arrays, Closures). Kích thước ô nhớ có thể co giãn linh hoạt trong quá trình chạy.</li>
+  </ul>
+
+  <div class="code-block">
+    <span class="code-label">Sơ đồ mô phỏng cấp phát bộ nhớ trong V8 Engine</span>
+<pre><code>   CALL STACK (Execution Frame)                  MEMORY HEAP (Dynamic Pool)
+ ┌──────────────┬──────────────────┐          ┌─────────────────────────────┐
+ │ Biến         │ Giá trị lưu trữ  │          │ Ô nhớ thực tế &amp; Dữ liệu     │
+ ├──────────────┼──────────────────┤          ├─────────────────────────────┤
+ │ x            │ 10               │          │                             │
+ │ y            │ 10               │          │                             │
+ │ a            │ 0x7FFF01 ────────┼─────────►│ Địa chỉ: 0x7FFF01           │
+ │ b            │ 0x7FFF01 ────────┼─────────►│ { name: "Bob" }             │
+ └──────────────┴──────────────────┘          └─────────────────────────────┘
+  * Biến `b = a` chỉ sao chép con trỏ 0x7FFF01. Cả `a` và `b` cùng trỏ chung 1 Object!</code></pre>
+  </div>
+
+  <h2>3. JavaScript là Pass-by-value hay Pass-by-reference?</h2>
+  <p>Đây là câu hỏi xuất hiện trong <strong>90% các buổi phỏng vấn kỹ thuật</strong> từ mức Middle đến Senior. Nhiều lập trình viên trả lời nhầm: <em>"Primitive là pass-by-value, còn Object là pass-by-reference"</em>.</p>
+
+  <div class="callout danger">
+    <div class="ct">⚠️ Câu trả lời chính xác: JavaScript 100% LUÔN LUÔN là Pass-by-value!</div>
+    <p>Trong thuật ngữ khoa học máy tính chuẩn mực, JavaScript sử dụng cơ chế gọi là <strong>Pass-by-sharing</strong> (hay Call-by-sharing). Bản chất của nó vẫn là <strong>Pass-by-value</strong>:</p>
+    <ul>
+      <li>Với Primitive: Giá trị được truyền là <strong>nội dung thực tế</strong> (con số, chuỗi ký tự).</li>
+      <li>Với Object: Giá trị được truyền là <strong>địa chỉ con trỏ tham chiếu (Memory Address Reference)</strong>. Giá trị con trỏ này được copy nguyên xi vào tham số hàm!</li>
+    </ul>
+  </div>
+
+  <p>Hãy xem ví dụ kinh điển chứng minh JavaScript <strong>không thể</strong> là Pass-by-reference thật sự:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript — Minh chứng Pass-by-sharing</span>
+<pre><code><span class="kw">function</span> <span class="fn">updateUser</span>(user) {
+  <span class="cmt">// 1. Đột biến thuộc tính (Mutation): Ảnh hưởng ra ngoài vì chung địa chỉ</span>
+  user.name = <span class="str">"Charlie"</span>;
+
+  <span class="cmt">// 2. Gán lại biến (Reassignment): user trỏ sang một ô nhớ hoàn toàn mới</span>
+  user = { name: <span class="str">"David"</span> };
+}
+
+<span class="kw">const</span> me = { name: <span class="str">"Alice"</span> };
+<span class="fn">updateUser</span>(me);
+
+console.<span class="fn">log</span>(me.name); <span class="cmt">// -> In ra "Charlie", KHÔNG PHẢI "David"!</span></code></pre>
+  </div>
+
+  <div class="callout why">
+    <div class="ct">💡 Phân tích sâu: Tại sao me.name không trở thành "David"?</div>
+    <p>Nếu JavaScript là <em>Pass-by-reference</em> thực thụ (như C++ với con trỏ <code>User*&amp;</code> hoặc C# với từ khóa <code>ref</code>), khi tham số <code>user</code> bị gán lại bằng <code>{ name: "David" }</code>, biến <code>me</code> ở scope ngoài cũng <strong>bắt buộc phải trỏ theo đối tượng mới</strong>.<br>
+    Nhưng trong JavaScript, tham số <code>user</code> chỉ nhận một bản sao giá trị con trỏ. Khi ta gán lại <code>user = ...</code>, ta chỉ đổi hướng trỏ của biến cục bộ đó, hoàn toàn không làm lay chuyển biến <code>me</code> ban đầu!</p>
+  </div>
+
+  <h2>4. Đột biến (Mutation) vs Gán lại (Reassignment) &amp; Bẫy Shallow Copy</h2>
+
+  <p>Khi làm việc với state trong các thư viện hiện đại (như React Redux, Zustand), nguyên tắc số 1 là <strong>Immutability (Bất biến)</strong>. Để tránh mutate dữ liệu gốc, lập trình viên thường copy object.</p>
+
+  <h3>Bẫy Shallow Copy với Spread Operator (`{ ...obj }`)</h3>
+  <div class="code-block">
+    <span class="code-label">JavaScript — Bẫy nông với Nested Objects</span>
+<pre><code><span class="kw">const</span> state = {
+  user: { name: <span class="str">"Nam"</span>, city: <span class="str">"Hanoi"</span> },
+  status: <span class="str">"active"</span>
+};
+
+<span class="cmt">// Shallow Copy: Chỉ clone thuộc tính cấp 1</span>
+<span class="kw">const</span> nextState = { ...state };
+nextState.status = <span class="str">"offline"</span>;           <span class="cmt">// An toàn: status là primitive</span>
+
+<span class="cmt">// BẪY: user là nested object, nextState.user vẫn trỏ chung ô nhớ với state.user!</span>
+nextState.user.city = <span class="str">"Saigon"</span>;
+console.<span class="fn">log</span>(state.user.city);           <span class="cmt">// -> In ra "Saigon"! State cũ đã bị mutate!</span></code></pre>
+  </div>
+
+  <h3>Giải pháp Deep Copy hiện đại: Native `structuredClone`</h3>
+  <p>Trước đây, lập trình viên thường dùng <code>JSON.parse(JSON.stringify(obj))</code> nhưng giải pháp này làm mất <code>Date</code> (bị ép thành string), mất <code>undefined</code>, <code>Symbol</code>, không sao chép được <code>Map</code>/<code>Set</code> và gãy hoàn toàn nếu gặp tham chiếu vòng tròn (Circular Reference).</p>
+  <p>Từ Node.js 17 và mọi trình duyệt hiện đại (2022+), hàm native <a href="https://developer.mozilla.org/en-US/docs/Web/API/Window/structuredClone" target="_blank">structuredClone()</a> đã trở thành tiêu chuẩn vàng:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript — Deep Clone an toàn tuyệt đối</span>
+<pre><code><span class="kw">const</span> deepCopied = <span class="fn">structuredClone</span>(state);
+deepCopied.user.city = <span class="str">"Da Nang"</span>;
+
+console.<span class="fn">log</span>(state.user.city); <span class="cmt">// -> Vẫn là "Hanoi"! Hoàn toàn bất biến.</span></code></pre>
+  </div>
+
+  <!-- GÓC PHỎNG VẤN THỰC TẾ -->
+  <div class="callout why">
+    <div class="ct">🎙️ Góc phỏng vấn Senior: Cách trả lời chuẩn Top-Down</div>
+    <p><strong>Câu hỏi 1:</strong> <em>"Giải thích cơ chế truyền tham số của hàm trong JavaScript: Pass-by-value hay Pass-by-reference?"</em></p>
+    <p>👉 <strong>Câu trả lời Senior (Phương pháp Top-Down):</strong><br>
+    <em>"JavaScript hoàn toàn là Pass-by-value trong mọi trường hợp. Tuy nhiên, với kiểu dữ liệu đối tượng (Reference types), giá trị được truyền đi chính là địa chỉ bộ nhớ (Memory pointer) của đối tượng đó trên Heap — thuật ngữ chuẩn khoa học máy tính gọi là <strong>Pass-by-sharing</strong>.<br>
+    Hệ quả là: Ta có thể biến đổi các thuộc tính bên trong đối tượng (Mutation) và sự thay đổi này sẽ phản chiếu ra bên ngoài. Nhưng nếu ta gán lại (Reassign) biến tham số sang một đối tượng hoàn toàn mới, biến ban đầu ở phạm vi gọi hàm hoàn toàn không bị ảnh hưởng."</em></p>
+    <hr style="border:none; border-top:1px dashed var(--border); margin:12px 0;">
+    <p><strong>Câu hỏi 2:</strong> <em>"Tại sao trong JavaScript `typeof null` lại trả về `'object'`? Có phải null là một Object không?"</em></p>
+    <p>👉 <strong>Câu trả lời Senior:</strong><br>
+    <em>"Không, <code>null</code> hoàn toàn là một Primitive Type theo đặc tả ECMA-262.<br>
+    Việc <code>typeof null === 'object'</code> là một <strong>bug lịch sử từ phiên bản đầu tiên của JavaScript (năm 1995)</strong>. Trong bộ engine C ban đầu của Brendan Eich, các giá trị trong JS được gắn tag loại kiểu bằng 32-bit: tag <code>000</code> biểu thị kiểu Object. Vì giá trị con trỏ null trong C là con trỏ rỗng (toàn bộ bit đều bằng 0, dẫn tới tag type là <code>000</code>), hàm <code>typeof</code> đã nhận diện nhầm nó thành Object. Đề xuất sửa lỗi này ở ECMAScript 6 đã bị từ chối vì nó sẽ làm phá vỡ (breaking changes) hàng triệu trang web đang tồn tại."</em></p>
+  </div>
+
+  <h2>5. Thực hành kiểm chứng trên máy thật (`practice/`)</h2>
+  <p>File kiểm thử [practice/memory-types.test.js](file:///d:/CODE/Web/review-learn/javascript/practice/memory-types.test.js) đã được thiết kế sẵn với 6 test case kiểm tra toàn diện các hiện tượng vừa học:</p>
+
+  <div class="code-block">
+    <span class="code-label">PowerShell — Chạy kiểm thử trên máy bạn</span>
+<pre><code>cd practice
+npm test</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">🎯 Kết quả kiểm chứng thực tế trên Node 22 / Vitest 4.1.11</div>
+<pre><code> ✓ practice/sanity.test.js (3 tests)
+ ✓ practice/memory-types.test.js (6 tests)
+ Test Files  2 passed (2)
+      Tests  9 passed (9)</code></pre>
+  </div>
+
+  <!-- QUIZ TƯƠNG TÁC TỨC THÌ -->
+  <div class="quiz">
+    <h3>🧠 Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code sau đây sẽ in ra kết quả gì trong console?</div>
+    <div class="code-block" style="margin: 6px 0 10px;">
+<pre><code><span class="kw">let</span> user = { name: <span class="str">"Alex"</span> };
+<span class="kw">function</span> <span class="fn">change</span>(obj) {
+  obj.name = <span class="str">"Jordan"</span>;
+  obj = { name: <span class="str">"Taylor"</span> };
+}
+<span class="fn">change</span>(user);
+console.<span class="fn">log</span>(user.name);</code></pre>
+    </div>
+    <button class="opt" data-correct="false" data-explain="Sai rồi! Dòng 'obj = { name: Taylor }' là phép gán lại biến cục bộ obj, không làm thay đổi biến user bên ngoài.">A. "Taylor"</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Dòng 'obj.name = Jordan' đã mutate đối tượng trên Heap. Dòng tiếp theo gán lại con trỏ obj nên không ảnh hưởng tới biến user ở scope ngoài.">B. "Jordan"</button>
+    <button class="opt" data-correct="false" data-explain="Sai rồi! Thao tác 'obj.name = Jordan' đã thực sự thay đổi giá trị thuộc tính của object.">C. "Alex"</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>🧠 Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Trong các phát biểu sau về bộ nhớ JavaScript, phát biểu nào ĐÚNG?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Array là một dạng Object đặc biệt, được lưu trữ động trên Memory Heap.">A. Mảng (Array) có kích thước cố định nên luôn được lưu trữ trên Call Stack.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Object spread chỉ copy 1 tầng nông. Các thuộc tính object lồng nhau vẫn dùng chung con trỏ tham chiếu.">B. Toán tử Spread '{ ...obj }' luôn tạo ra một bản sao sâu (Deep Copy) độc lập hoàn toàn.</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Primitive types là immutable, mọi thao tác biến đổi chuỗi đều cấp phát một giá trị mới và đổi con trỏ lưu trữ.">C. Kiểu dữ liệu Primitive là bất biến (Immutable), không thể biến đổi trực tiếp nội dung trong ô nhớ.</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">✅ Bạn vừa làm chủ trong Bài 01</div>
+    <ul class="checklist">
+      <li>Nắm rõ 7 kiểu Primitive và phân biệt rạch ròi với kiểu Reference.</li>
+      <li>Hiểu cơ chế cấp phát Call Stack (kích thước tĩnh) vs Memory Heap (cấp phát động).</li>
+      <li>Giải thích tường tận khái niệm <em>Pass-by-sharing</em> và phân biệt được Mutation vs Reassignment.</li>
+      <li>Nhận diện được bẫy Shallow Copy khi dùng Spread Operator và cách dùng <code>structuredClone</code> để đảm bảo Immutability.</li>
+      <li>Tự tin trả lời câu hỏi phỏng vấn về <code>typeof null === 'object'</code> và mô hình truyền tham số.</li>
+    </ul>
+  </div>
+
+  <!-- KẾT BÀI BẰNG CÂU HỎI TƯ DUY BẮC CẦU SANG BÀI 02 -->
+  <h2>6. Câu hỏi tư duy (Bắc cầu sang Bài 02)</h2>
+  <p>Chúng ta vừa khẳng định: <em>Kiểu dữ liệu Primitive (như string, number) chỉ là các giá trị thô lưu trên Call Stack, hoàn toàn không phải Object và không thể chứa thuộc tính/phương thức.</em></p>
+  <p>Vậy tại sao trong thực tế bạn vẫn có thể viết:</p>
+  <div class="code-block">
+    <span class="code-label">JavaScript</span>
+<pre><code><span class="kw">const</span> str = <span class="str">"hello"</span>;
+console.<span class="fn">log</span>(str.<span class="fn">toUpperCase</span>());  <span class="cmt">// -> Gọi được phương thức như Object?!</span>
+
+<span class="kw">const</span> num = <span class="num">42</span>;
+console.<span class="fn">log</span>(num.<span class="fn">toFixed</span>(<span class="num">2</span>));      <span class="cmt">// -> Gọi được toFixed?!</span>
+
+console.<span class="fn">log</span>([] + {});            <span class="cmt">// -> Ra "[object Object]"?!</span>
+console.<span class="fn">log</span>([] - <span class="num">1</span>);             <span class="cmt">// -> Ra -1?!</span></code></pre>
+  </div>
+  <p>👉 <em>JavaScript Engine đã âm thầm "biến hình" các giá trị Primitive thành Object như thế nào thông qua cơ chế <strong>Wrapper Objects (Autoboxing)</strong>? Và các thuật ngữ trừu tượng <code>ToPrimitive</code>, <code>ToNumber</code> trong tài liệu ECMA-262 quyết định thứ tự ép kiểu ngầm (Implicit Coercion) ra sao?</em></p>
+
+  <!-- XEM TRƯỚC BÀI KẾ TIẾP -->
+  <div class="next-box">
+    <div class="nl">→ Bài tiếp theo</div>
+    <div class="nt">Bài 02 · Bản chất Type Coercion: Thuật toán ToPrimitive, ToNumber, ToString (ECMA-262)</div>
+    <p class="nd">Mổ xẻ cỗ máy ép kiểu của JavaScript, giải mã ma trận toán tử `+`, `-` và các câu hỏi phỏng vấn trắc nghiệm quái đản nhất.</p>
+  </div>
+
+  <!-- THANH ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0000-playground-setup.html">← Trước</a>
+    <a href="index.html">🏠 Mục lục</a>
+    <a href="#" class="disabled">Sau →</a>
+  </div>
+
+  <p class="try-it">💬 <strong>Tôi là người dạy của bạn.</strong> Hãy mở bài học trong trình duyệt, thử nghiệm các đoạn code trên và trao đổi với tôi nếu bạn có bất kỳ thắc mắc nào về cơ chế bộ nhớ!</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

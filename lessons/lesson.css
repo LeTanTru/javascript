@@ -147,14 +147,46 @@ table.data tr:nth-child(even) td { background: rgba(255,255,255,.015); }
 .navbar a:hover { color: #fff; border-color: var(--accent); background: var(--bg-card); }
 .navbar a.disabled { opacity: .35; pointer-events: none; }
 
-/* ----- nút 🏠 nổi (do lesson-enhance.js chèn) ----- */
+/* ----- nút 🏠 nổi (do lesson-enhance.js chèn) kèm viền tiến độ tròn SVG ----- */
 .home-fab {
   position: fixed; bottom: 24px; right: 24px; z-index: 50;
-  width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-  background: var(--bg-card); border: 1px solid var(--border); font-size: 22px; text-decoration: none;
-  box-shadow: 0 8px 24px rgba(0,0,0,.4); transition: all .15s;
+  width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-card);
+  border: none;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  transition: transform .15s ease, box-shadow .15s ease;
+  overflow: visible;
 }
-.home-fab:hover { border-color: var(--accent); transform: translateY(-2px); }
+.home-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(56,189,248,.3);
+}
+.home-fab .home-fab-ring {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  transform: rotate(-90deg); /* Bắt đầu từ 12h và quay theo chiều kim đồng hồ */
+  pointer-events: none;
+}
+.home-fab .ring-bg {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 3;
+}
+.home-fab .ring-bar {
+  fill: none;
+  stroke: url(#fab-grad);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset .08s ease-out;
+}
+.home-fab .home-fab-icon {
+  font-size: 20px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1;
+}
 
 .checklist { list-style: none; padding-left: 0; }
 .checklist li { padding-left: 30px; position: relative; }
@@ -162,10 +194,24 @@ table.data tr:nth-child(even) td { background: rgba(255,255,255,.015); }
 
 .try-it { font-size: 14px; color: var(--text-dim); margin-top: 26px; padding-top: 16px; border-top: 1px dashed var(--border); }
 
+/* ----- thanh tiến độ cuộn trang trên cùng (do lesson-enhance.js chèn) ----- */
+.reading-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  z-index: 9999;
+  transition: width .08s ease-out;
+  pointer-events: none;
+  box-shadow: 0 0 10px rgba(56,189,248,.6);
+}
+
 /* ----- print-friendly ----- */
 @media print {
   body { background: #fff; color: #111; }
-  .home-fab, .copy-btn, .navbar { display: none; }
+  .home-fab, .copy-btn, .navbar, .reading-progress-bar { display: none; }
   pre, .callout, .quiz, table.data th { background: #f5f5f5 !important; color: #111 !important; }
   a { color: #06c; }
 }

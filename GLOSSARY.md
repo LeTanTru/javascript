@@ -1,4 +1,4 @@
-﻿# JavaScript Core Glossary
+# JavaScript Core Glossary
 
 Bảng thuật ngữ chuẩn hóa dành cho khóa học JavaScript Core for Frontend Interview. Mỗi thuật ngữ được định nghĩa súc tích, chính xác theo chuẩn ECMAScript và V8 runtime.
 
@@ -43,3 +43,20 @@ _Avoid_: Soft pointer, weak link
 **Hidden Class (Shape)**:
 Cấu trúc dữ liệu nội bộ trong V8 Engine dùng để biểu diễn hình dạng của đối tượng và ánh xạ offset của các thuộc tính trong bộ nhớ nhằm tối ưu hóa tốc độ truy xuất thuộc tính.
 _Avoid_: Virtual class, internal prototype
+
+**Call Stack**:
+Vùng nhớ ngăn xếp (LIFO) trong JavaScript Engine quản lý Execution Contexts, lời gọi hàm và lưu trữ các biến Primitive có kích thước cố định.
+_Avoid_: Execution pile, run stack
+
+**Memory Heap**:
+Vùng nhớ phi cấu trúc do V8 Engine cấp phát động trong RAM để lưu trữ các đối tượng phức tạp (Objects, Arrays, Functions) có kích thước linh hoạt.
+_Avoid_: Object pile, heap stack
+
+**Pass-by-sharing**:
+Cơ chế truyền tham số hàm của JavaScript: bản chất là Pass-by-value, trong đó giá trị được truyền của một Object là bản sao con trỏ địa chỉ bộ nhớ (Memory Pointer) trên Heap.
+_Avoid_: True pass-by-reference, pointer passing
+
+**Shallow Copy**:
+Thao tác sao chép đối tượng mà chỉ sao chép các thuộc tính ở tầng nông thứ nhất (cấp 1); các thuộc tính lồng nhau (nested objects/arrays) vẫn tiếp tục dùng chung con trỏ tham chiếu tới cùng ô nhớ cũ trên Heap.
+_Avoid_: Half clone, top copy
+

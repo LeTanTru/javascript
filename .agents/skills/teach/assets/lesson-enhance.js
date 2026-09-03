@@ -1,6 +1,78 @@
-/* ===== lesson-enhance.js — tăng cường UX cho mọi bài: nút Copy + nút 🏠 nổi + quiz ===== */
+/* ===== lesson-enhance.js — tăng cường UX cho mọi bài: progress bar trên top + progress border home-fab + nút Copy + quiz ===== */
 (function () {
-  // --- 1) Chèn nút Copy vào thanh header (.code-label) của mỗi khối code ---
+  // --- 1) Nút 🏠 nổi cố định (về mục lục) kèm viền tiến độ tròn SVG chuẩn xác ---
+  var fab = document.querySelector(".home-fab");
+  if (!fab) {
+    fab = document.createElement("a");
+    fab.className = "home-fab";
+    fab.href = "index.html";
+    fab.title = "Về mục lục";
+    fab.innerHTML =
+      '<svg class="home-fab-ring" viewBox="0 0 52 52" aria-hidden="true">' +
+        '<defs>' +
+          '<linearGradient id="fab-grad" x1="0%" y1="0%" x2="100%" y2="100%">' +
+            '<stop offset="0%" stop-color="#38bdf8"/>' +
+            '<stop offset="100%" stop-color="#a78bfa"/>' +
+          '</linearGradient>' +
+        '</defs>' +
+        '<circle class="ring-bg" cx="26" cy="26" r="23"/>' +
+        '<circle class="ring-bar" cx="26" cy="26" r="23"/>' +
+      '</svg>' +
+      '<span class="home-fab-icon">🏠</span>';
+    document.body.appendChild(fab);
+  } else if (!fab.querySelector(".home-fab-ring")) {
+    fab.innerHTML =
+      '<svg class="home-fab-ring" viewBox="0 0 52 52" aria-hidden="true">' +
+        '<defs>' +
+          '<linearGradient id="fab-grad" x1="0%" y1="0%" x2="100%" y2="100%">' +
+            '<stop offset="0%" stop-color="#38bdf8"/>' +
+            '<stop offset="100%" stop-color="#a78bfa"/>' +
+          '</linearGradient>' +
+        '</defs>' +
+        '<circle class="ring-bg" cx="26" cy="26" r="23"/>' +
+        '<circle class="ring-bar" cx="26" cy="26" r="23"/>' +
+      '</svg>' +
+      '<span class="home-fab-icon">🏠</span>';
+  }
+
+  var ringBar = fab ? fab.querySelector(".ring-bar") : null;
+  var circumference = 2 * Math.PI * 23; // ≈ 144.51
+  if (ringBar) {
+    ringBar.style.strokeDasharray = circumference;
+    ringBar.style.strokeDashoffset = circumference;
+  }
+
+  // --- 2) Thanh tiến độ đọc cuộn trang trên top (Reading Scroll Progress Bar) ---
+  var progressBar = document.querySelector(".reading-progress-bar");
+  if (!progressBar) {
+    progressBar = document.createElement("div");
+    progressBar.className = "reading-progress-bar";
+    document.body.appendChild(progressBar);
+  }
+
+  // Cập nhật tiến độ cuộn cho cả thanh top và viền tròn SVG của home-fab
+  var updateProgress = function () {
+    var docEl = document.documentElement;
+    var body = document.body;
+    var scrollTop = window.pageYOffset || docEl.scrollTop || body.scrollTop || 0;
+    var scrollHeight = (docEl.scrollHeight || body.scrollHeight) - docEl.clientHeight;
+    var percent = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
+    var clamped = Math.min(100, Math.max(0, percent));
+
+    if (progressBar) {
+      progressBar.style.width = clamped + "%";
+    }
+    if (ringBar) {
+      var offset = circumference - (clamped / 100) * circumference;
+      ringBar.style.strokeDashoffset = offset;
+    }
+  };
+
+  window.addEventListener("scroll", updateProgress, { passive: true });
+  window.addEventListener("resize", updateProgress, { passive: true });
+  updateProgress();
+
+  // --- 3) Chèn nút Copy vào thanh header (.code-label) của mỗi khối code ---
   document.querySelectorAll(".code-block").forEach(function (block) {
     var pre = block.querySelector("pre");
     if (!pre) return;

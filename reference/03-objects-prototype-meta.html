@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 03 · Objects, Prototype Chain &amp; Meta-Programming</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .cs-badge { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #232838; color: var(--text-dim); margin-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it, .quiz { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 03 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 03 : Objects, Prototype Chain &amp; Meta-Programming</h1>
+  <p class="subtitle">Bản đồ tư duy tóm lược cô đọng toàn bộ kiến thức nâng cao từ Bài 09 đến Bài 12 &mdash; Sẵn sàng cho phỏng vấn Senior Frontend và thiết kế thư viện Reactive chuyên sâu.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm trọn 4 trục cốt lõi (Prototype Chain, Toán tử new, ES6 Classes/Private Fields, Proxy/Reflect Reactivity).</p>
+
+  <!-- TRỤC 1: PROTOTYPE CHAIN -->
+  <h2>1. Trục 1: Prototype Chain (Bài 09)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Khái niệm</th>
+        <th>Bản chất kỹ thuật (ECMAScript)</th>
+        <th>Vị trí tồn tại &amp; Lưu ý Senior</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong><code>[[Prototype]]</code></strong></td>
+        <td>Internal slot ẩn trỏ tới prototype object cha mà đối tượng kế thừa. Đỉnh chuỗi là <code>Object.prototype</code> có <code>[[Prototype]] === null</code>.</td>
+        <td>Có trên mọi object (trừ <code>Object.create(null)</code>). Truy cập chuẩn bằng <code>Object.getPrototypeOf()</code>.</td>
+      </tr>
+      <tr>
+        <td><strong><code>__proto__</code></strong></td>
+        <td>Accessor property (getter/setter) trên <code>Object.prototype</code>.</td>
+        <td>Đã bị coi là <em>deprecated</em>; tránh dùng trong production.</td>
+      </tr>
+      <tr>
+        <td><strong><code>prototype</code></strong></td>
+        <td>Thuộc tính object thông thường làm khuôn mẫu cho các instance.</td>
+        <td><strong>Chỉ có trên Function Constructor và Class</strong>. Arrow Functions và plain object instance KHÔNG CÓ.</td>
+      </tr>
+      <tr>
+        <td><strong>Property Shadowing</strong></td>
+        <td>Gán thuộc tính lên con tạo Own Property che khuất thuộc tính cùng tên của prototype cha mà không làm thay đổi cha.</td>
+        <td>Kiểm tra thuộc tính riêng bằng <code>Object.hasOwn(obj, prop)</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: TOÁN TỬ NEW & OBJECT.CREATE -->
+  <h2>2. Trục 2: Toán tử `new` &amp; `Object.create()` (Bài 10)</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <span class="cs-badge">4 BƯỚC TOÁN TỬ NEW</span>
+      <h3>Internal Method [[Construct]]</h3>
+      <p>1. Cấp phát object rỗng: <code>const instance = {}</code>.</p>
+      <p>2. Nối prototype: <code>instance.[[Prototype]] = Constructor.prototype</code>.</p>
+      <p>3. Gán ngữ cảnh <code>this</code> và thực thi: <code>Constructor.apply(instance, args)</code>.</p>
+      <p>4. <strong>The Return Trap:</strong> Nếu hàm trả về Object/Function &rarr; Trả về Object đó; nếu trả về Primitive (kể cả <code>null</code>) &rarr; Trả về <code>instance</code>.</p>
+    </div>
+    <div class="cs-card">
+      <span class="cs-badge">OBJECT.CREATE VS NEW.TARGET</span>
+      <h3>Khởi tạo đối tượng nâng cao</h3>
+      <p><strong><code>Object.create(proto)</code>:</strong> Thiết lập liên kết prototype trực tiếp mà không cần thực thi hàm khởi tạo.</p>
+      <p><strong><code>new.target</code>:</strong> Meta-property phát hiện hàm có được gọi bằng <code>new</code> hay không. Nền tảng của <em>Safe Constructor Pattern</em> tự động kích hoạt <code>new</code>.</p>
+    </div>
+  </div>
+
+  <!-- TRỤC 3: ES6 CLASSES & INHERITANCE -->
+  <h2>3. Trục 3: ES6 Classes vs Prototypal Inheritance (Bài 11)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Tính năng</th>
+        <th>Bản chất cơ chế tầng Engine</th>
+        <th>Quy tắc bắt buộc &amp; Ứng dụng</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>ES6 Class</strong></td>
+        <td>100% là <strong>Syntactic Sugar</strong> trên Prototype Chain.</td>
+        <td>Bắt buộc gọi bằng <code>new</code> (ném TypeError nếu thiếu), tự động Strict Mode, dính TDZ trong Creation Phase.</td>
+      </tr>
+      <tr>
+        <td><strong>Bí mật <code>super()</code></strong></td>
+        <td>Trong Subclass (<code>extends</code>), Base Class chịu trách nhiệm khởi tạo ô nhớ cho <code>this</code>.</td>
+        <td><strong>Bắt buộc gọi <code>super()</code> trước khi truy cập <code>this</code></strong>, vi phạm sẽ ném <code>ReferenceError</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>Kế thừa kép</strong></td>
+        <td>Thiết lập 2 chuỗi prototype song song: Instance chain (<code>Child.prototype &rarr; Parent.prototype</code>) và Static chain (<code>Child &rarr; Parent</code>).</td>
+        <td>Cho phép các phương thức tĩnh (<code>static methods</code>) được kế thừa trực tiếp giữa các class.</td>
+      </tr>
+      <tr>
+        <td><strong>Private Fields (<code>#field</code>)</strong></td>
+        <td>Tính năng ES2022 được Engine kiểm soát ở tầng bytecode qua cơ chế <em>PrivateBrand</em>.</td>
+        <td>Bảo mật cấp ngôn ngữ (Hard Private): ném SyntaxError nếu truy xuất ngoài class, vô hình trước reflection.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 4: PROXY & REFLECT REACTIVITY -->
+  <h2>4. Trục 4: Meta-programming, Proxy &amp; Reactivity (Bài 12)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Thành phần</th>
+        <th>Nguyên lý hoạt động</th>
+        <th>Ưu thế vượt trội</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong><code>Proxy</code> API</strong></td>
+        <td>Bọc quanh target object và đánh chặn <strong>13 internal methods</strong> (<code>get</code>, <code>set</code>, <code>has</code>, <code>deleteProperty</code>, <code>apply</code>...).</td>
+        <td>Khắc phục toàn bộ nhược điểm của <code>Object.defineProperty</code>: nhận diện thêm/xóa key tự động, hỗ trợ mảng native, Lazy evaluation.</td>
+      </tr>
+      <tr>
+        <td><strong><code>Reflect</code> API</strong></td>
+        <td>Bộ 13 phương thức chuẩn tĩnh ánh xạ 1:1 với Proxy Traps.</td>
+        <td>Tham số <strong><code>receiver</code></strong> trong <code>Reflect.get(target, prop, receiver)</code> bảo toàn context <code>this</code> cho các getter kế thừa, ngăn chặn bug mất reactivity.</td>
+      </tr>
+      <tr>
+        <td><strong>Reactivity Engine</strong></td>
+        <td>Mô hình cốt lõi của Vue 3: <code>track(target, key)</code> ghi nhận dependency khi <code>get</code>, <code>trigger(target, key)</code> kích hoạt lại <code>effect</code> khi <code>set</code>.</td>
+        <td>Nền tảng của kiến trúc Reactive State và Signals hiện đại.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0012-proxy-reflect-reactivity.html">&#8592; Bài 12</a>
+    <a href="../lessons/index.html">&#127968; Mục lục khóa học</a>
+    <a href="../lessons/0013-this-binding.html" class="disabled">Module 04 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh:</strong> Hãy lưu trang này để ôn luyện trước các buổi phỏng vấn kỹ thuật hoặc in ra (Ctrl + P) để ôn tập offline bất kỳ lúc nào !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

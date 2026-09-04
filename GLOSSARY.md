@@ -180,6 +180,23 @@ _Avoid_: Soft private, pseudo-private
 Mẫu kế thừa tối ưu nhất trong kỷ nguyên ES5: sử dụng `Parent.call(this)` để mượn constructor khởi tạo thuộc tính instance, kết hợp `Object.create(Parent.prototype)` để kế thừa phương thức mà không cần gọi constructor của cha lần thứ 2. Là nền tảng cơ sở mà ES6 `class...extends` mô phỏng lại.
 _Avoid_: Double constructor inheritance, classical clone
 
+**Meta-Programming (Siêu lập trình)**:
+Khả năng của một chương trình máy tính có thể đọc, phân tích, sửa đổi hoặc tùy biến chính hành vi cốt lõi của ngôn ngữ runtime tại thời điểm thực thi. Trong JavaScript, Meta-programming được triển khai qua Proxy, Reflect và Symbols.
+_Avoid_: Code generation, macro system
+
+**Reflect API**:
+Đối tượng tĩnh toàn cục trong ES6 cung cấp 13 phương thức chuẩn ánh xạ 1:1 với các Proxy Traps để thực thi các hành vi mặc định của JavaScript Engine. Giúp chuẩn hóa giá trị trả về (trả boolean thay vì ném lỗi) và bảo toàn ngữ cảnh `this` thông qua tham số `receiver`.
+_Avoid_: Reflection class, object helper
+
+**Proxy Trap**:
+Hàm đánh chặn được định nghĩa trong đối tượng handler của `Proxy`, cho phép can thiệp và ghi đè một trong 13 internal methods tương ứng của JavaScript Engine (như `get`, `set`, `has`, `deleteProperty`, `apply`).
+_Avoid_: Hook, middleware, event handler
+
+**Reactivity**:
+Mô hình lập trình khai báo trong đó giao diện hoặc các phép tính toán phụ thuộc (effects) tự động cập nhật phản ánh sự thay đổi của trạng thái dữ liệu (state). Trong kiến trúc hiện đại (Vue 3, Signals), Reactivity được xây dựng dựa trên `Proxy` (bẫy `get` để track dependency, bẫy `set` để trigger effects).
+_Avoid_: Two-way binding, auto-update
+
+
 
 
 

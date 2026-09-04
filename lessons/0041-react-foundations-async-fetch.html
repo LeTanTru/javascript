@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 41 · Async/Await, Fetch API &amp; AbortController trong React</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 11 · Bài 41</span>
+  <h1>Bài 41 · Async/Await, Fetch API &amp; AbortController trong React (Xử lý Race Conditions &amp; Cleanup)</h1>
+  <p class="subtitle">Làm chủ luồng xử lý bất đồng bộ trong React: Viết Data Fetching Effect chuẩn xác, xử lý triệt để bẫy Fetch không reject HTTP 404/500, chống xung đột thứ tự dữ liệu (Race Conditions) bằng Boolean flag và hủy bỏ Network Request khi component unmount bằng AbortController.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Nắm vững kiến trúc async data fetching trong React, tránh lỗi Memory Leak trên component unmounted và loại bỏ 100% bug hiển thị kết quả cũ đè kết quả mới.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 40 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 40</div>
+    <p>Sau khi đã thành thạo thao tác State và Props đồng bộ, thách thức lớn nhất trong các ứng dụng thực tế là <strong>Side Effects bất đồng bộ (Network Requests)</strong>. Tại sao useEffect không nhận async function trực tiếp? Làm sao giải quyết khi user đổi tab liên tục khiến dữ liệu bị hiển thị sai lệch? Hãy cùng mổ xẻ chi tiết.</p>
+  </div>
+
+  <!-- PHẦN 1: EFFECT DATA FETCHING PATTERN -->
+  <h2>1. Pattern chuẩn: Data Fetching trong <code>useEffect</code></h2>
+  <p>React <code>useEffect</code> yêu cầu callback trả về <code>undefined</code> hoặc một hàm <strong>Cleanup function</strong>. Do đó bạn <strong>không được</strong> truyền trực tiếp <code>async () =&gt; {}</code> (vì async function luôn trả về Promise):</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Clean Async Effect Pattern</span>
+    <pre><code><span class="kw">function</span> <span class="fn">UserProfile</span>({ userId }) {
+  <span class="kw">const</span> [user, setUser] = <span class="fn">useState</span>(<span class="kw">null</span>);
+  <span class="kw">const</span> [loading, setLoading] = <span class="fn">useState</span>(<span class="kw">true</span>);
+  <span class="kw">const</span> [error, setError] = <span class="fn">useState</span>(<span class="kw">null</span>);
+
+  <span class="fn">useEffect</span>(() =&gt; {
+    <span class="kw">const</span> controller = <span class="kw">new</span> <span class="fn">AbortController</span>(); <span class="cmt">// 1. Khởi tạo controller</span>
+
+    <span class="kw">async function</span> <span class="fn">loadUser</span>() {
+      <span class="fn">setLoading</span>(<span class="kw">true</span>);
+      <span class="fn">setError</span>(<span class="kw">null</span>);
+      <span class="kw">try</span> {
+        <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(`/api/users/${userId}`, { signal: controller.signal });
+        <span class="kw">if</span> (!res.ok) <span class="kw">throw new</span> <span class="fn">Error</span>(`Lỗi tải dữ liệu: HTTP ${res.status}`); <span class="cmt">// 2. Bắt buộc kiểm tra res.ok</span>
+        <span class="kw">const</span> data = <span class="kw">await</span> res.<span class="fn">json</span>();
+        <span class="fn">setUser</span>(data);
+      } <span class="kw">catch</span> (err) {
+        <span class="kw">if</span> (err.name !== <span class="str">'AbortError'</span>) { <span class="cmt">// 3. Bỏ qua AbortError khi unmount</span>
+          <span class="fn">setError</span>(err.message);
+        }
+      } <span class="kw">finally</span> {
+        <span class="fn">setLoading</span>(<span class="kw">false</span>);
+      }
+    }
+
+    <span class="fn">loadUser</span>();
+
+    <span class="kw">return</span> () =&gt; controller.<span class="fn">abort</span>(); <span class="cmt">// 4. Cleanup: Hủy request nếu userId đổi hoặc component unmount</span>
+  }, [userId]);
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 2: BẪY RACE CONDITIONS -->
+  <h2>2. Bẫy Race Conditions (Xung đột thứ tự phản hồi)</h2>
+  <p>Khi người dùng chuyển nhanh giữa Tab A (User 1) và Tab B (User 2), nếu request User 1 phản hồi chậm hơn User 2, giao diện Tab B sẽ bị dữ liệu cũ của User 1 ghi đè (Race Condition)!</p>
+
+  <table class="data">
+    <thead>
+      <tr><th>Giải pháp chống Race Condition</th><th>Cơ chế hoạt động</th><th>Ưu điểm nổi bật</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Boolean Flag (<code>ignore = true</code>)</strong></td>
+        <td>Đặt cờ <code>let ignore = false</code> trong effect; hàm cleanup set <code>ignore = true</code>. Khi promise trả về, chỉ set state nếu <code>!ignore</code>.</td>
+        <td>Cực kỳ đơn giản, không cần cấu hình network signal.</td>
+      </tr>
+      <tr>
+        <td><strong>2. <code>AbortController</code> (Khuyên dùng)</strong></td>
+        <td>Truyền <code>signal: controller.signal</code> vào <code>fetch()</code>; cleanup gọi <code>controller.abort()</code> để hủy ngay trên tầng Browser Network.</td>
+        <td><strong>Tiết kiệm băng thông</strong>, CPU và triệt tiêu hoàn toàn race condition từ gốc.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 3: BẪY FETCH HTTP STATUS -->
+  <h2>3. Bẫy kinh điển: <code>fetch()</code> không bao giờ reject trên HTTP 404 hoặc 500</h2>
+  <div class="callout warning">
+    <div class="ct">&#9888;&#65039; Lưu ý sống còn về Fetch API</div>
+    <p>Khác với thư viện Axios, hàm <code>fetch()</code> của trình duyệt chỉ reject Promise khi có <strong>lỗi mạng vật lý (Network Failure)</strong> hoặc request bị chặn CORS. Nếu máy chủ trả về <strong>HTTP 404 Not Found</strong> hoặc <strong>HTTP 500 Internal Server Error</strong>, <code>fetch()</code> vẫn giải quyết Promise thành công (Resolved)! Bạn bắt buộc phải tự kiểm tra <code>if (!response.ok) throw new Error(...)</code>.</p>
+  </div>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Tại sao không nên viết: <code>useEffect(async () =&gt; { await fetchData(); }, [])</code>?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Async function luôn trả về Promise. Nhưng React useEffect chỉ chấp nhận giá trị trả về là undefined hoặc một Cleanup Function. Trả về Promise sẽ phá vỡ cơ chế cleanup của React và gây warning runtime.">A. Vì async function trả về Promise, làm hỏng cơ chế nhận Cleanup Function của React</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Trình duyệt hoàn toàn hỗ trợ async/await.">B. Vì trình duyệt không hỗ trợ async trong React</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Vì useEffect chỉ chạy được code đồng bộ trong Call Stack</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Khi fetch API trả về mã lỗi HTTP 404, điều gì sẽ xảy ra với Promise do hàm <code>fetch()</code> trả về?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! fetch() vẫn resolve thành công với response.ok = false và response.status = 404. Bạn phải chủ động ném error dựa vào thuộc tính response.ok.">A. Promise vẫn Resolved bình thường với response.ok là false</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Fetch không tự reject trên HTTP status error.">B. Promise tự động Rejected và nhảy vào khối catch</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Trình duyệt tự động tải lại trang</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 5: CHECKLIST -->
+  <h2>5. Checklist tự kiểm chứng — Bài 41</h2>
+  <div class="checklist">
+    <div>&#9989; Viết hàm <strong>Data Fetching</strong> chuẩn bên trong <code>useEffect</code>.</div>
+    <div>&#9989; Luôn kiểm tra <code>response.ok</code> trước khi phân tích cú pháp <code>res.json()</code>.</div>
+    <div>&#9989; Triệt tiêu 100% nguy cơ <strong>Race Conditions</strong> bằng <code>AbortController</code> hoặc <code>ignore flag</code>.</div>
+    <div>&#9989; Lọc bỏ <code>AbortError</code> trong khối <code>catch</code> khi component unmount.</div>
+    <div>&#9989; Toàn bộ 42 test suites (255/255 unit tests) trong thư mục <code>practice</code> đã chạy XANH 100%.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo (Bài cuối cùng của lộ trình!)</div>
+    <div class="nt">Bài 42 · Logic &amp; Conditional Rendering trong JSX</div>
+    <p class="nd">Khắc phục bẫy số 0 trong && short-circuiting, tối ưu toán tử 3 ngôi (Ternary), và xử lý an toàn giá trị Null vs Undefined.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0040-react-foundations-array-immutability.html">&#8592; Bài 40</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0042-react-foundations-conditional-jsx.html">Bài 42 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng các bài test Async Fetch for React và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

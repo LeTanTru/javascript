@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 42 · Logic &amp; Conditional Rendering trong JSX: && Bẫy số 0, Ternary &amp; Null Semantics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 11 · Bài 42 (Hoàn tất Lộ trình JS Core!)</span>
+  <h1>Bài 42 · Logic &amp; Conditional Rendering trong JSX: <code>&amp;&amp;</code> Bẫy số 0, Toán tử 3 ngôi &amp; Null/Undefined Semantics</h1>
+  <p class="subtitle">Khám phá bản chất của Conditional Rendering trong JSX: Giải mã cạm bẫy số 0 kinh điển khi dùng toán tử &amp;&amp;, hiểu rõ cơ chế JSX Runtime bỏ qua false/null/undefined nhưng bắt buộc render số 0 và NaN, kỹ thuật Early Return (Guard Clauses) và Pattern Dictionary Object Mapping cho giao diện đa trạng thái.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Nắm trọn quy tắc rẽ nhánh giao diện trong React, loại bỏ hoàn toàn các lỗi hiển thị ký tự thừa trên DOM và tối ưu hóa tính rõ ràng của code JSX.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 41 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 41 &mdash; Bài học chốt hạ toàn khóa!</div>
+    <p>Sau khi dữ liệu đã được fetch thành công từ server, bước cuối cùng là hiển thị nó lên màn hình. Làm sao để hiển thị Spinner khi đang tải, Error Banner khi có sự cố, và hiển thị danh sách khi thành công mà không làm code JSX bị rối như ma trận? Hãy cùng hoàn thành bài học cuối cùng của chúng ta.</p>
+  </div>
+
+  <!-- PHẦN 1: BẪY SỐ 0 TRONG && -->
+  <h2>1. Bẫy số 0 kinh điển trong toán tử <code>&amp;&amp;</code> (Short-circuiting)</h2>
+  <p>Trong JavaScript, toán tử <code>a &amp;&amp; b</code> trả về giá trị của vế trái nếu vế trái là Falsy. Do đó, khi <code>messages.length === 0</code>, biểu thức <code>0 &amp;&amp; &lt;Badge /&gt;</code> trả về đúng số <strong>0</strong>:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cạm bẫy số 0 trên giao diện React</span>
+    <pre><code><span class="kw">function</span> <span class="fn">NotificationBar</span>({ messages = [] }) {
+  <span class="kw">return</span> (
+    &lt;<span class="kw">div</span>&gt;
+      &lt;<span class="kw">h3</span>&gt;Hộp thư đến&lt;/<span class="kw">h3</span>&gt;
+      {<span class="cmt">/* ❌ SAI: Khi messages = [], màn hình sẽ hiện một số '0' trơ trọi! */</span>}
+      {messages.length &amp;&amp; &lt;<span class="kw">span</span> className=<span class="str">"badge"</span>&gt;{messages.length}&lt;/<span class="kw">span</span>&gt;}
+
+      {<span class="cmt">/* ✅ CÁCH 1: So sánh lớn hơn 0 tường minh */</span>}
+      {messages.length &gt; <span class="num">0</span> &amp;&amp; &lt;<span class="kw">span</span> className=<span class="str">"badge"</span>&gt;{messages.length}&lt;/<span class="kw">span</span>&gt;}
+
+      {<span class="cmt">/* ✅ CÁCH 2: Ép kiểu Boolean sạch */</span>}
+      {<span class="fn">Boolean</span>(messages.length) &amp;&amp; &lt;<span class="kw">span</span> className=<span class="str">"badge"</span>&gt;{messages.length}&lt;/<span class="kw">span</span>&gt;}
+
+      {<span class="cmt">/* ✅ CÁCH 3: Dùng toán tử 3 ngôi (Ternary) */</span>}
+      {messages.length &gt; <span class="num">0</span> ? &lt;<span class="kw">span</span> className=<span class="str">"badge"</span>&gt;{messages.length}&lt;/<span class="kw">span</span>&gt; : <span class="kw">null</span>}
+    &lt;/<span class="kw">div</span>&gt;
+  );
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 2: JSX RUNTIME IGNORED VALUES -->
+  <h2>2. Ma trận giá trị bị JSX bỏ qua (Ignored Values) vs Rendered Values</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Giá trị JavaScript</th><th>Cách JSX Runtime xử lý</th><th>Hiển thị trên DOM?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong><code>false</code>, <code>null</code>, <code>undefined</code>, <code>true</code></strong></td>
+        <td>Bị bỏ qua hoàn toàn (Ignored)</td>
+        <td><strong>KHÔNG</strong> (Không sinh ra DOM node nào)</td>
+      </tr>
+      <tr>
+        <td><strong>Số <code>0</code>, <code>-0</code></strong></td>
+        <td>Được coi là số hợp lệ</td>
+        <td><strong>CÓ</strong> (In chuỗi <code>"0"</code> lên màn hình)</td>
+      </tr>
+      <tr>
+        <td><strong><code>NaN</code></strong></td>
+        <td>Được ép sang String</td>
+        <td><strong>CÓ</strong> (In chuỗi <code>"NaN"</code> lên màn hình)</td>
+      </tr>
+      <tr>
+        <td><strong>Chuỗi rỗng <code>""</code></strong></td>
+        <td>Chuỗi hợp lệ</td>
+        <td><strong>CÓ</strong> (Tạo text node rỗng)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 3: EARLY RETURN GUARD CLAUSES -->
+  <h2>3. Kỹ thuật Early Return (Guard Clauses) trong Component</h2>
+  <p>Thay vì lồng 4 tầng ternary bên trong khối JSX, hãy xử lý các trạng thái đặc biệt ở đầu hàm component:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Early Return Clean Pattern</span>
+    <pre><code><span class="kw">function</span> <span class="fn">ProductList</span>({ loading, error, products }) {
+  <span class="cmt">// 1. Xử lý trạng thái Loading</span>
+  <span class="kw">if</span> (loading) <span class="kw">return</span> &lt;<span class="kw">div</span> className=<span class="str">"spinner"</span>&gt;Đang tải dữ liệu...&lt;/<span class="kw">div</span>&gt;;
+
+  <span class="cmt">// 2. Xử lý trạng thái Lỗi</span>
+  <span class="kw">if</span> (error) <span class="kw">return</span> &lt;<span class="kw">div</span> className=<span class="str">"alert error"</span>&gt;Đã xảy ra lỗi: {error}&lt;/<span class="kw">div</span>&gt;;
+
+  <span class="cmt">// 3. Xử lý trạng thái Trống (Empty State)</span>
+  <span class="kw">if</span> (!products || products.length === <span class="num">0</span>) {
+    <span class="kw">return</span> &lt;<span class="kw">div</span> className=<span class="str">"empty"</span>&gt;Không có sản phẩm nào phù hợp.&lt;/<span class="kw">div</span>&gt;;
+  }
+
+  <span class="cmt">// 4. Luồng chính (Happy Path): Rất sạch sẽ và không bị lồng ghép!</span>
+  <span class="kw">return</span> (
+    &lt;<span class="kw">ul</span> className=<span class="str">"grid"</span>&gt;
+      {products.<span class="fn">map</span>(p =&gt; &lt;<span class="kw">li</span> key={p.id}&gt;{p.name}&lt;/<span class="kw">li</span>&gt;)}
+    &lt;/<span class="kw">ul</span>&gt;
+  );
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 4: DICTIONARY MAPPING PATTERN -->
+  <h2>4. Pattern Dictionary Mapping cho đa điều kiện</h2>
+  <p>Khi có 3 trạng thái trở lên (Pending, Approved, Rejected, Canceled...), thay vì viết <code>status === 'pending' ? ... : status === 'approved' ? ...</code>, hãy dùng một Object Lookup:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Dictionary Lookup Pattern</span>
+    <pre><code><span class="kw">const</span> STATUS_CONFIG = {
+  pending: { label: <span class="str">'Đang chờ'</span>, className: <span class="str">'badge-warning'</span> },
+  approved: { label: <span class="str">'Đã duyệt'</span>, className: <span class="str">'badge-success'</span> },
+  rejected: { label: <span class="str">'Từ chối'</span>, className: <span class="str">'badge-danger'</span> }
+};
+
+<span class="kw">function</span> <span class="fn">StatusBadge</span>({ status }) {
+  <span class="kw">const</span> config = STATUS_CONFIG[status] ?? { label: <span class="str">'Không rõ'</span>, className: <span class="str">'badge-muted'</span> };
+  <span class="kw">return</span> &lt;<span class="kw">span</span> className={`badge ${config.className}`}&gt;{config.label}&lt;/<span class="kw">span</span>&gt;;
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn mã JSX sau sẽ render gì ra màn hình khi <code>items = []</code>?<br><code>&lt;div&gt;{items.length &amp;&amp; &lt;span&gt;Có hàng&lt;/span&gt;}&lt;/div&gt;</code></div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! items.length = 0 là falsy nên toán tử &amp;&amp; trả về 0. JSX render số 0 trực tiếp thành văn bản '0' trên màn hình.">A. Số "0"</button>
+    <button class="opt" data-correct="false" data-explain="Sai! JSX không bỏ qua số 0.">B. Không hiển thị gì cả (Ẩn hoàn toàn)</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Thẻ span "Có hàng"</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 6: CHECKLIST & HOÀN TẤT TOÀN BỘ KHÓA HỌC -->
+  <h2>6. Checklist tự kiểm chứng — Hoàn tất Khóa học</h2>
+  <div class="checklist">
+    <div>&#9989; Khắc phục 100% <strong>Bẫy số 0</strong> trong toán tử <code>&amp;&amp;</code>.</div>
+    <div>&#9989; Hiểu sâu cơ chế JSX Runtime đối với <strong>false, null, undefined vs 0, NaN</strong>.</div>
+    <div>&#9989; Thành thạo kỹ thuật <strong>Early Return (Guard Clauses)</strong> cho Component States.</div>
+    <div>&#9989; Ứng dụng <strong>Dictionary Object Mapping</strong> thay thế Nested Ternaries.</div>
+    <div>&#9989; Toàn bộ 43 test suites (261/261 unit tests) trong thư mục <code>practice</code> đã chạy XANH 100%.</div>
+  </div>
+
+  <!-- TỐT NGHIỆP TOÀN KHÓA HỌC -->
+  <div class="callout bridge" style="border-left-color: #10b981; background: rgba(16, 185, 129, 0.08);">
+    <div class="ct" style="color: #10b981;">&#127891; CHÚC MỪNG BẠN ĐÃ TỐT NGHIỆP TRỌN VẸN KHÓA HỌC JAVASCRIPT CORE!</div>
+    <p>Bạn đã hoàn thành xuất sắc <strong>43 bài học chuyên sâu</strong> trải dài qua 12 Modules (từ Module 00 đến Module 11), vượt qua <strong>261 unit tests</strong> và giải mã toàn bộ các chủ đề từ V8 Engine, Memory Model, Closures, Event Loop, DOM Rendering, Module Systems, Mock Interview Senior/Lead đến React Foundations.</p>
+    <p>Bạn đã sở hữu nền tảng JavaScript vững chắc nhất để tự tin chinh phục mọi buổi phỏng vấn kỹ thuật Senior Frontend / Technical Lead ở bất kỳ công ty công nghệ hàng đầu nào.</p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Tổng kết toàn diện Module 11</div>
+    <div class="nt">Reference Guide · Module 11: JavaScript nền tảng cho React</div>
+    <p class="nd">Tổng hợp cheat-sheet ES6+, quy tắc mảng bất biến, kỹ thuật async effect và ma trận JSX conditional rendering.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0041-react-foundations-async-fetch.html">&#8592; Bài 41</a>
+    <a href="index.html">&#127968; Mục lục toàn khóa</a>
+    <a href="../reference/11-javascript-for-react.html">Cheatsheet Module 11 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Chúc mừng bạn!</strong> Toàn bộ lộ trình 43 bài đã hoàn thành xuất sắc. Hãy chạy <code>npm test</code> trong thư mục <code>practice</code> để tận hưởng 261 bài test XANH 100% !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

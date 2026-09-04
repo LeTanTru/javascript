@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 11 · JavaScript nền tảng cho React</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 11 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 11 : JavaScript nền tảng cho React</h1>
+  <p class="subtitle">Bản đồ tra cứu nhanh về toàn bộ các kỹ thuật JavaScript thiết yếu nhất trong phát triển ứng dụng React: ES6+ Syntax, Array State Immutability, Async Data Fetching &amp; Conditional JSX từ Bài 39 đến Bài 42.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm trọn 4 trụ cột JavaScript cho React (Props Destructuring &amp; Immutability, ES2023 Non-mutating Array Methods, AbortController Data Fetching, Conditional Rendering Semantics).</p>
+
+  <!-- TRỤC 1: MA TRẬN 4 CHỦ ĐỀ CỐT LÕI -->
+  <h2>1. Bảng quy chuẩn JavaScript cho React Developers</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Chủ đề</th><th>Cú pháp chuẩn</th><th>Mục đích &amp; Lợi ích trong React</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. ES6+ Props &amp; State</strong></td>
+        <td><code>const { title = 'A', ...rest } = props</code><br><code>setObj(p =&gt; ({ ...p, key: val }))</code></td>
+        <td>Tránh lặp code, hỗ trợ default fallback và đảm bảo nguyên tắc <strong>Immutability</strong> của React State.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Array State Manipulation</strong></td>
+        <td><code>[...prev, item]</code> (Thêm)<br><code>prev.filter(i =&gt; i.id !== id)</code> (Xóa)<br><code>prev.map(i =&gt; i.id === id ? patch : i)</code> (Sửa)</td>
+        <td>Thay thế các hàm mutate cũ (<code>push, splice, sort</code>) bằng các hàm sinh mảng mới an toàn cho Shallow Comparison.</td>
+      </tr>
+      <tr>
+        <td><strong>3. Async Fetch &amp; Cleanup</strong></td>
+        <td><code>const c = new AbortController();</code><br><code>fetch(url, { signal: c.signal });</code><br><code>return () =&gt; c.abort();</code></td>
+        <td>Triệt tiêu <strong>Race Conditions</strong>, hủy bỏ network request khi component unmount và giải phóng RAM.</td>
+      </tr>
+      <tr>
+        <td><strong>4. Conditional Rendering</strong></td>
+        <td><code>count &gt; 0 &amp;&amp; &lt;Badge /&gt;</code><br><code>Boolean(flag) &amp;&amp; &lt;Modal /&gt;</code><br><code>MAP[status] ?? &lt;Default /&gt;</code></td>
+        <td>Loại bỏ <strong>Bẫy số 0</strong> trong JSX, thay thế nested ternary bằng dictionary mapping sạch sẽ.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: 4 THẺ TỔNG KẾT SENIOR -->
+  <h2>2. 4 Trụ cột tư duy JavaScript &rarr; React Senior</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <h3>1. Shallow Reference &amp; Object.is</h3>
+      <p>React chỉ kích hoạt re-render khi tham chiếu thay đổi. Việc mutate trực tiếp object/array sẽ bị React bỏ qua do <code>Object.is(prev, next) === true</code>.</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>2. ES2023 Non-mutating Methods</h3>
+      <ul style="margin-bottom: 0; padding-left: 18px;">
+        <li><code>toSorted()</code> thay cho <code>sort()</code></li>
+        <li><code>toReversed()</code> thay cho <code>reverse()</code></li>
+        <li><code>toSpliced()</code> thay cho <code>splice()</code></li>
+        <li><code>with(index, val)</code> thay cho <code>arr[i] = val</code></li>
+      </ul>
+    </div>
+
+    <div class="cs-card">
+      <h3>3. Bẫy Fetch Error Handling</h3>
+      <p><code>fetch()</code> không tự reject trên HTTP 404/500! Luôn kiểm tra <code>if (!res.ok) throw new Error(...)</code> và bỏ qua <code>AbortError</code> trong khối catch.</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>4. Derived State over Extra State</h3>
+      <p>Không tạo thêm <code>useState</code> cho các giá trị có thể tính toán trực tiếp từ Props/State hiện tại bằng <code>reduce</code>, <code>filter</code> hoặc <code>map</code>.</p>
+    </div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>3. Checklist hoàn tất Module 11 &amp; Toàn bộ Khóa học</h2>
+  <div class="checklist">
+    <div>&#9989; Làm chủ 100% cú pháp ES6+ và tư duy Immutability trong React.</div>
+    <div>&#9989; Xử lý thành thạo mảng State bằng các phương thức ES2023.</div>
+    <div>&#9989; Chống Race Conditions và Memory Leaks trong async effects bằng AbortController.</div>
+    <div>&#9989; Thành thạo rẽ nhánh JSX an toàn và không dính bẫy số 0.</div>
+    <div>&#9989; Hoàn thành trọn vẹn 43/43 bài học và 261/261 unit tests trong toàn bộ repository!</div>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0042-react-foundations-conditional-jsx.html">&#8592; Quay lại Bài 42</a>
+    <a href="../lessons/index.html">&#127968; Mục lục toàn khóa học (43/43 Bài)</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh.</strong> Chúc mừng bạn đã hoàn thành trọn vẹn toàn bộ giáo trình JavaScript Core for Frontend Interview !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

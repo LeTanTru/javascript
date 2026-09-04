@@ -72,4 +72,21 @@ _Avoid_: Object flattening, primitive extractor
 Cơ chế tạm thời đóng gói một giá trị Primitive (string, number, boolean) thành đối tượng wrapper tương ứng trên Memory Heap khi truy cập thuộc tính/phương thức, và lập tức hủy bỏ sau khi hoàn thành.
 _Avoid_: Object boxing, auto-instantiation
 
+**IsStrictlyEqual**:
+Thuật toán trừu tượng ECMA-262 §7.2.15 triển khai toán tử `===`: không ép kiểu, trả về false ngay nếu khác type. Có 2 điểm không tương đồng với toán học: `NaN !== NaN` và `+0 === -0`.
+_Avoid_: Strict comparison, type-safe equality
+
+**IsLooselyEqual**:
+Thuật toán trừu tượng ECMA-262 §7.2.14 triển khai toán tử `==`: thực hiện ép kiểu theo bảng quy tắc, có rule đặc biệt cho `null/undefined` (chỉ bằng nhau, không coerce sang số).
+_Avoid_: Loose comparison, abstract equality
+
+**SameValue**:
+Thuật toán trừu tượng ECMA-262 §7.2.11 triển khai `Object.is()`: giống `===` nhưng xử lý đúng 2 edge case IEEE 754 — `NaN` đồng nhất với chính nó, và `+0` khác `−0`.
+_Avoid_: Deep equality, reference equality
+
+**IEEE 754**:
+Chuẩn quốc tế định nghĩa cách biểu diễn và tính toán số thực dấu phẩy động trong máy tính (JavaScript dùng double-precision 64-bit). Quy định: mọi phép so sánh liên quan đến NaN đều trả về false; tồn tại hai zero phân biệt (+0 và −0).
+_Avoid_: Floating point standard, IEEE standard
+
+
 

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  BÀI 03: So sánh bằng: === vs == vs Object.is() & Bẫy NaN, null, undefined
+  Lộ trình: JavaScript Core Mastery for Frontend Interview
+  ============================================================================
+-->
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 03 · So sánh bằng: === vs == vs Object.is() &amp; Bẫy NaN, null, undefined</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 01 · Bài 03</span>
+  <h1>So sánh bằng: <code>===</code> vs <code>==</code> vs <code>Object.is()</code></h1>
+  <p class="subtitle">Giải mã 2 thuật toán trừu tượng IsStrictlyEqual &amp; IsLooselyEqual trong ECMA-262, làm chủ bảng quy tắc coerce của <code>==</code>, và phá vỡ 3 câu hỏi phỏng vấn kinh điển nhất về <code>NaN</code>, <code>null</code>, <code>-0</code>.</p>
+  <p class="meta-line">&#9203; ~15 phút &middot; &#127919; Mục tiêu: Giải thích chính xác tại sao <code>null &gt;= 0</code> là <code>true</code> nhưng <code>null == 0</code> lại là <code>false</code>, và khi nào dùng <code>Object.is()</code> thay vì <code>===</code>.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 02 -->
+  <div class="callout bridge">
+    <div class="ct">&#127757; Giải mã câu đố từ Bài 02</div>
+    <p>Cuối Bài 02, bạn đã thấy 3 biểu thức này:</p>
+    <div class="code-block" style="margin-top:8px;">
+      <span class="code-label">JavaScript</span>
+<pre><code>console.<span class="fn">log</span>(<span class="kw">null</span> &gt; <span class="num">0</span>);   <span class="cmt">// -> false</span>
+console.<span class="fn">log</span>(<span class="kw">null</span> == <span class="num">0</span>);  <span class="cmt">// -> false</span>
+console.<span class="fn">log</span>(<span class="kw">null</span> &gt;= <span class="num">0</span>);  <span class="cmt">// -> true  (QUÁI LẠ ?!)</span></code></pre>
+    </div>
+    <p>Câu trả lời nằm ở chỗ <code>&gt;=</code> và <code>==</code> thực ra là <strong>hai thuật toán trừu tượng hoàn toàn khác nhau</strong> trong ECMA-262. Bài này sẽ giải mã tận gốc.</p>
+  </div>
+
+  <h2>1. Ba toán tử, ba thuật toán</h2>
+  <p>JavaScript có 3 cách so sánh bằng, mỗi cái gọi vào một thuật toán trừu tượng khác nhau trong đặc tả ECMA-262:</p>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Toán tử / Hàm</th>
+        <th>Thuật toán ECMA-262</th>
+        <th>Coerce kiểu ?</th>
+        <th>Điểm đặc biệt</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>===</code></td>
+        <td><code>IsStrictlyEqual</code> §7.2.15</td>
+        <td>&#10005; Không</td>
+        <td><code>NaN !== NaN</code>, <code>+0 === -0</code></td>
+      </tr>
+      <tr>
+        <td><code>==</code></td>
+        <td><code>IsLooselyEqual</code> §7.2.14</td>
+        <td>&#10003; Có (theo bảng quy tắc)</td>
+        <td><code>null</code> chỉ <code>==</code> <code>undefined</code>, không coerce trong <code>==</code></td>
+      </tr>
+      <tr>
+        <td><code>Object.is()</code></td>
+        <td><code>SameValue</code> §7.2.11</td>
+        <td>&#10005; Không</td>
+        <td><code>NaN === NaN</code>, <code>+0 &#8800; -0</code> — toán học đúng nhất</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2. <code>===</code> — IsStrictlyEqual &amp; 2 bẫy của IEEE 754</h2>
+  <p>Thuật toán <a href="https://tc39.es/ecma262/#sec-isstrictlyequal" target="_blank">IsStrictlyEqual (§7.2.15)</a> đơn giản:</p>
+  <ol>
+    <li>Nếu <code>typeof x &#8800; typeof y</code> &#8594; trả về <code>false</code> ngay lập tức.</li>
+    <li>Nếu cùng type &#8594; so sánh value trực tiếp theo chuẩn <strong>IEEE 754-2019</strong> cho số, byte-by-byte cho string.</li>
+    <li><strong>Không bao giờ</strong> thực hiện bất kỳ thao tác ép kiểu nào.</li>
+  </ol>
+
+  <div class="callout warn">
+    <div class="ct">&#9888;&#65039; Bẫy #1: <code>NaN !== NaN</code> — Số tự khác chính mình</div>
+    <p>Tiêu chuẩn <strong>IEEE 754</strong> quy định: <em>"Mọi phép so sánh liên quan đến NaN đều trả về false"</em>, kể cả <code>NaN == NaN</code>. Đây là quyết định có chủ đích — NaN đại diện cho một tập vô số giá trị "không phải số" khác nhau, chúng không thể tự bằng nhau.</p>
+    <div class="code-block">
+      <span class="code-label">JavaScript — Kiểm tra NaN đúng cách</span>
+<pre><code>console.<span class="fn">log</span>(NaN === NaN); <span class="cmt">// false  — luôn luôn false theo IEEE 754</span>
+console.<span class="fn">log</span>(NaN == NaN);  <span class="cmt">// false  — cả == cũng vậy</span>
+
+<span class="cmt">// ❌ TRÁNH: isNaN() toàn cục ép kiểu trước khi kiểm tra -> bẫy!</span>
+console.<span class="fn">log</span>(<span class="fn">isNaN</span>(<span class="str">"hello"</span>));         <span class="cmt">// true  (sai! "hello" không phải NaN)</span>
+console.<span class="fn">log</span>(<span class="fn">isNaN</span>(<span class="kw">undefined</span>));      <span class="cmt">// true  (sai!)</span>
+
+<span class="cmt">// ✅ ĐÚNG: Number.isNaN() — KHÔNG coerce, chỉ true khi value thật sự là NaN</span>
+console.<span class="fn">log</span>(Number.<span class="fn">isNaN</span>(<span class="str">"hello"</span>));  <span class="cmt">// false (đúng!)</span>
+console.<span class="fn">log</span>(Number.<span class="fn">isNaN</span>(NaN));     <span class="cmt">// true  (đúng!)</span>
+console.<span class="fn">log</span>(Number.<span class="fn">isNaN</span>(<span class="num">0</span> / <span class="num">0</span>));   <span class="cmt">// true  (0/0 sinh ra NaN)</span></code></pre>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="ct">&#9888;&#65039; Bẫy #2: <code>+0 === -0</code> là <code>true</code> — Zero có dấu</div>
+    <p>IEEE 754 định nghĩa hai giá trị zero phân biệt: <code>+0</code> và <code>-0</code>. Chúng có ý nghĩa khác nhau trong tính toán hướng và góc (ví dụ: <code>1 / +0 = Infinity</code> nhưng <code>1 / -0 = -Infinity</code>), nhưng <code>===</code> lại coi chúng là một.</p>
+    <div class="code-block">
+      <span class="code-label">JavaScript</span>
+<pre><code>console.<span class="fn">log</span>(+<span class="num">0</span> === -<span class="num">0</span>); <span class="cmt">// true   (=== không phân biệt)</span>
+console.<span class="fn">log</span>(<span class="num">1</span> / +<span class="num">0</span>);    <span class="cmt">// Infinity</span>
+console.<span class="fn">log</span>(<span class="num">1</span> / -<span class="num">0</span>);    <span class="cmt">// -Infinity  — hai giá trị KHÁC NHAU về vật lý!</span></code></pre>
+    </div>
+  </div>
+
+  <h2>3. <code>Object.is()</code> — SameValue: Toán học đúng nhất</h2>
+  <p>Hàm <a href="https://tc39.es/ecma262/#sec-samevalue" target="_blank"><code>Object.is()</code> (§7.2.11)</a> xuất hiện từ ES6, vá đúng 2 điểm lỗi của <code>===</code>:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript — Object.is() sửa đúng 2 bẫy IEEE 754</span>
+<pre><code><span class="cmt">// Bẫy 1: NaN</span>
+Object.<span class="fn">is</span>(NaN, NaN);   <span class="cmt">// true  ✅ — toán học đúng</span>
+
+<span class="cmt">// Bẫy 2: -0</span>
+Object.<span class="fn">is</span>(+<span class="num">0</span>, -<span class="num">0</span>);   <span class="cmt">// false ✅ — phân biệt đúng</span>
+Object.<span class="fn">is</span>(+<span class="num">0</span>, +<span class="num">0</span>);   <span class="cmt">// true</span>
+
+<span class="cmt">// Các trường hợp thông thường — giống === 100%</span>
+Object.<span class="fn">is</span>(<span class="num">1</span>, <span class="num">1</span>);       <span class="cmt">// true</span>
+Object.<span class="fn">is</span>(<span class="str">"a"</span>, <span class="str">"a"</span>);  <span class="cmt">// true</span>
+Object.<span class="fn">is</span>(null, null); <span class="cmt">// true</span></code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Khi nào dùng <code>Object.is()</code> trong thực tế ?</div>
+    <ul>
+      <li><strong>React</strong> dùng <code>Object.is()</code> để so sánh các phần tử trong mảng deps của <code>useEffect</code>, <code>useMemo</code> — đảm bảo <code>NaN</code> không trigger re-render vô tận.</li>
+      <li>Khi bạn cần kiểm tra chính xác <code>-0</code> trong các tính toán về hướng, góc, hoặc animation.</li>
+      <li>Khi viết các hàm tiện ích kiểu <code>deepEqual</code>, <code>shallowEqual</code>.</li>
+    </ul>
+  </div>
+
+  <h2>4. <code>==</code> — IsLooselyEqual &amp; Bảng quy tắc coerce</h2>
+  <p>Đây là thuật toán phức tạp nhất. <a href="https://tc39.es/ecma262/#sec-islooselyequal" target="_blank">IsLooselyEqual (§7.2.14)</a> thực hiện theo thứ tự ưu tiên:</p>
+
+  <div class="code-block">
+    <span class="code-label">Quy trình IsLooselyEqual(x, y)</span>
+<pre><code>1. Nếu typeof x === typeof y -> dùng IsStrictlyEqual(x, y) — giống ===
+
+2. Nếu x là null và y là undefined (hoặc ngược lại) -> return true
+   (null == undefined: quy tắc đặc biệt cứng trong spec)
+
+3. Nếu một vế là number/bigint, vế kia là string
+   -> ToNumber(string) rồi so sánh lại
+
+4. Nếu một vế là boolean
+   -> ToNumber(boolean) [true->1, false->0] rồi so sánh lại
+
+5. Nếu một vế là object, vế kia là number/string/symbol/bigint
+   -> ToPrimitive(object) rồi so sánh lại
+
+6. Các trường hợp còn lại -> return false</code></pre>
+  </div>
+
+  <div class="callout warn">
+    <div class="ct">&#9888;&#65039; Quy tắc đặc biệt quan trọng nhất: <code>null</code> và <code>undefined</code> trong <code>==</code></div>
+    <p>Bước 2 được xử lý <strong>TRƯỚC</strong> mọi bước coerce. Điều này có nghĩa là:</p>
+    <ul>
+      <li><code>null == undefined</code> &#8594; <code>true</code> (quy tắc cứng)</li>
+      <li><code>null</code> KHÔNG bao giờ coerce sang số <code>0</code> khi dùng <code>==</code></li>
+      <li>&#8594; <code>null == 0</code> là <code>false</code>, <code>null == false</code> là <code>false</code>, <code>null == ""</code> là <code>false</code></li>
+      <li><code>null</code> chỉ <code>==</code> với <code>null</code> hoặc <code>undefined</code>, không gì khác!</li>
+    </ul>
+  </div>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript — Bảng == kinh điển và giải thích từng dòng</span>
+<pre><code><span class="cmt">// ── Nhóm null / undefined (bước 2 ưu tiên) ──</span>
+<span class="kw">null</span> == <span class="kw">undefined</span>;  <span class="cmt">// true  — quy tắc cứng</span>
+<span class="kw">null</span> == <span class="num">0</span>;          <span class="cmt">// false — null không coerce trong ==</span>
+<span class="kw">null</span> == <span class="kw">false</span>;      <span class="cmt">// false</span>
+<span class="kw">null</span> == <span class="str">""</span>;         <span class="cmt">// false</span>
+
+<span class="cmt">// ── Nhóm boolean (bước 4: ToNumber(boolean) trước) ──</span>
+<span class="str">"0"</span> == <span class="kw">false</span>;      <span class="cmt">// true  — false->0, "0"->0, 0==0</span>
+<span class="str">""</span>  == <span class="kw">false</span>;      <span class="cmt">// true  — false->0, ""->0, 0==0</span>
+<span class="str">"1"</span> == <span class="kw">true</span>;       <span class="cmt">// true  — true->1, "1"->1, 1==1</span>
+<span class="str">"2"</span> == <span class="kw">true</span>;       <span class="cmt">// false — true->1, "2"->2, 1!=2</span>
+
+<span class="cmt">// ── Nhóm object/array (bước 5: ToPrimitive trước) ──</span>
+[] == <span class="kw">false</span>;        <span class="cmt">// true  — false->0, []->""->0, 0==0</span>
+[] == <span class="num">0</span>;            <span class="cmt">// true  — []->""->0, 0==0</span>
+[] == <span class="str">""</span>;           <span class="cmt">// true  — [].toString()->"", ""==""</span>
+[<span class="num">1</span>] == <span class="num">1</span>;           <span class="cmt">// true  — [1]->"1"->1, 1==1</span></code></pre>
+  </div>
+
+  <h2>5. Giải mã hoàn chỉnh: Tại sao <code>null &gt;= 0</code> là <code>true</code> ?</h2>
+
+  <div class="callout why">
+    <div class="ct">&#9889; Chìa khóa: <code>&gt;=</code> và <code>==</code> dùng hai thuật toán KHÁC NHAU cho <code>null</code></div>
+    <p>Toán tử quan hệ (<code>&gt;</code>, <code>&lt;</code>, <code>&gt;=</code>, <code>&lt;=</code>) dùng thuật toán <strong>Abstract Relational Comparison (§7.3.12)</strong>, <strong>LUÔN LUÔN</strong> ép cả 2 vế về số qua <code>ToNumber()</code>.<br>
+    Toán tử <code>==</code> dùng <strong>IsLooselyEqual (§7.2.14)</strong> có quy tắc đặc biệt cho <code>null</code>.</p>
+    <div class="code-block" style="margin-top:8px;">
+      <span class="code-label">Giải thích từng bước</span>
+<pre><code><span class="cmt">// null >= 0</span>
+<span class="cmt">// Dùng Abstract Relational Comparison:</span>
+<span class="cmt">// B1: ToNumber(null) = 0</span>
+<span class="cmt">// B2: ToNumber(0) = 0</span>
+<span class="cmt">// B3: 0 >= 0 -> true ✅</span>
+<span class="kw">null</span> &gt;= <span class="num">0</span>; <span class="cmt">// true</span>
+
+<span class="cmt">// null > 0</span>
+<span class="cmt">// B1: ToNumber(null) = 0</span>
+<span class="cmt">// B2: 0 > 0 -> false ✅</span>
+<span class="kw">null</span> &gt; <span class="num">0</span>;  <span class="cmt">// false</span>
+
+<span class="cmt">// null == 0</span>
+<span class="cmt">// Dùng IsLooselyEqual — bước 2 kích hoạt:</span>
+<span class="cmt">// null chỉ == null hoặc undefined, KHÔNG coerce</span>
+<span class="cmt">// -> false ✅</span>
+<span class="kw">null</span> == <span class="num">0</span>;  <span class="cmt">// false</span>
+
+<span class="cmt">// undefined >= 0</span>
+<span class="cmt">// ToNumber(undefined) = NaN</span>
+<span class="cmt">// Mọi so sánh với NaN đều false theo IEEE 754</span>
+<span class="kw">undefined</span> &gt;= <span class="num">0</span>; <span class="cmt">// false</span></code></pre>
+    </div>
+  </div>
+
+  <!-- GÓC PHỎNG VẤN THỰC TẾ -->
+  <div class="callout why">
+    <div class="ct">&#127897;&#65039; Góc phỏng vấn Senior: 3 câu hỏi kinh điển</div>
+
+    <p><strong>Câu hỏi 1:</strong> <em>"Tại sao trong JavaScript, <code>typeof NaN === 'number'</code> ?"</em></p>
+    <p>&#128073; <strong>Câu trả lời Senior:</strong><br>
+    <em>"NaN (Not-a-Number) là một giá trị đặc biệt trong chuẩn IEEE 754-2019, được phân loại vào kiểu dữ liệu số (floating-point) chứ không phải một kiểu riêng. Nó đại diện cho kết quả của các phép toán số học không xác định như <code>0/0</code>, <code>Math.sqrt(-1)</code>, hoặc <code>parseInt('abc')</code>. JavaScript kế thừa đúng phân loại này từ IEEE 754, vì vậy <code>typeof NaN</code> là <code>'number'</code>."</em></p>
+
+    <hr style="border:none; border-top:1px dashed var(--border); margin:12px 0;">
+
+    <p><strong>Câu hỏi 2:</strong> <em>"Tại sao React dùng <code>Object.is()</code> thay vì <code>===</code> để so sánh props/state ?"</em></p>
+    <p>&#128073; <strong>Câu trả lời Senior:</strong><br>
+    <em>"React sử dụng <code>Object.is()</code> thông qua internal function <code>shallowEqual</code> vì nó xử lý đúng 2 edge case mà <code>===</code> sai: <code>NaN === NaN</code> với <code>===</code> là <code>false</code> dẫn đến state <code>NaN</code> sẽ trigger re-render vô tận dù giá trị không đổi, và <code>+0 === -0</code> là <code>true</code> có thể bỏ sót sự thay đổi hướng trong animation. <code>Object.is()</code> giải quyết cả hai chính xác."</em></p>
+
+    <hr style="border:none; border-top:1px dashed var(--border); margin:12px 0;">
+
+    <p><strong>Câu hỏi 3:</strong> <em>"<code>isNaN()</code> và <code>Number.isNaN()</code> khác nhau như thế nào ?"</em></p>
+    <p>&#128073; <strong>Câu trả lời Senior:</strong><br>
+    <em>"Hàm <code>isNaN()</code> toàn cục (legacy) ép kiểu argument sang số qua <code>ToNumber()</code> trước khi kiểm tra, dẫn đến <code>isNaN('hello')</code> trả về <code>true</code> dù <code>'hello'</code> rõ ràng không phải NaN. <code>Number.isNaN()</code> (ES6) không coerce gì cả — chỉ trả về <code>true</code> khi giá trị thực sự là kiểu <code>number</code> VÀ có giá trị <code>NaN</code>. Trong code hiện đại, luôn dùng <code>Number.isNaN()</code>."</em></p>
+  </div>
+
+  <h2>6. Thực hành kiểm chứng trên máy thật (<code>practice/</code>)</h2>
+  <p>File <code>practice/equality.test.js</code> đã sẵn sàng với 14 test cases kiểm chứng toàn diện:</p>
+
+  <div class="code-block">
+    <span class="code-label">PowerShell — Chạy kiểm thử trên máy bạn</span>
+<pre><code>cd practice
+npm test</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127919; Kết quả kiểm chứng thực tế trên Node 22 / Vitest 4.1.11</div>
+<pre><code> ✓ equality.test.js (14 tests)
+ ✓ type-coercion.test.js (5 tests)
+ ✓ memory-types.test.js (6 tests)
+ ✓ sanity.test.js (3 tests)
+ Test Files  4 passed (4)
+      Tests  28 passed (28)</code></pre>
+  </div>
+
+  <!-- QUIZ TƯƠNG TÁC -->
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Biểu thức <code>[] == false</code> trả về giá trị gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Mảng rỗng [] không phải false — chúng là object. Nhưng == sẽ coerce cả hai về số trước khi so sánh.">A. false</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! false -> ToNumber -> 0. [] -> ToPrimitive -> '' -> ToNumber -> 0. Cuối cùng: 0 == 0 là true.">B. true</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Phép so sánh không ném lỗi, nó coerce kiểu và trả về kết quả boolean.">C. TypeError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Cách nào sau đây kiểm tra <code>NaN</code> đúng nhất ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! value === NaN luôn trả về false vì NaN không bằng chính nó theo IEEE 754.">A. <code>value === NaN</code></button>
+    <button class="opt" data-correct="false" data-explain="Sai! isNaN() ép kiểu trước khi kiểm tra, dẫn đến isNaN('hello') là true dù 'hello' không phải NaN.">B. <code>isNaN(value)</code></button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Number.isNaN() không coerce, chỉ trả về true khi value thực sự là kiểu number VÀ có giá trị NaN.">C. <code>Number.isNaN(value)</code></button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 3. <code>Object.is(NaN, NaN)</code> trả về gì ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Object.is() dùng thuật toán SameValue, xử lý đúng NaN: NaN đồng nhất với chính nó.">A. true</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Đây là hành vi của === chứ không phải Object.is(). Object.is() sửa đúng bẫy NaN này.">B. false</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Object.is() không ném lỗi, nó hoạt động tốt với mọi giá trị.">C. TypeError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#9989; Bạn vừa làm chủ trong Bài 03</div>
+    <ul class="checklist">
+      <li>Phân biệt rõ ràng 3 thuật toán: <strong>IsStrictlyEqual</strong> (<code>===</code>), <strong>IsLooselyEqual</strong> (<code>==</code>), <strong>SameValue</strong> (<code>Object.is()</code>).</li>
+      <li>Nắm 2 bẫy IEEE 754 của <code>===</code>: <code>NaN !== NaN</code> và <code>+0 === -0</code>.</li>
+      <li>Hiểu quy tắc đặc biệt của <code>==</code> với <code>null</code>: chỉ bằng <code>null</code> hoặc <code>undefined</code>, không coerce.</li>
+      <li>Giải thích được tại sao <code>null &gt;= 0</code> là <code>true</code> nhưng <code>null == 0</code> là <code>false</code>.</li>
+      <li>Biết dùng <code>Number.isNaN()</code> thay <code>isNaN()</code> trong mọi tình huống.</li>
+    </ul>
+  </div>
+
+  <!-- KẾT BÀI — BẮC CẦU SANG BÀI 04 -->
+  <h2>7. Câu hỏi tư duy (Bắc cầu sang Bài 04)</h2>
+  <p>Nếu bạn biết <code>typeof null === 'object'</code> là một <strong>lỗi lịch sử</strong> tồn tại từ 1995, thì câu hỏi đặt ra:</p>
+  <div class="code-block">
+    <span class="code-label">JavaScript</span>
+<pre><code><span class="cmt">// typeof có thực sự đáng tin cậy để kiểm tra kiểu không ?</span>
+console.<span class="fn">log</span>(<span class="kw">typeof</span> <span class="kw">null</span>);       <span class="cmt">// "object"  -- LỖI LỊCH SỬ!</span>
+console.<span class="fn">log</span>(<span class="kw">typeof</span> <span class="kw">function</span>(){}); <span class="cmt">// "function" -- nhưng function là object...</span>
+console.<span class="fn">log</span>(<span class="kw">typeof</span> []);           <span class="cmt">// "object"   -- không phân biệt được Array!</span>
+
+<span class="cmt">// instanceof liệu có đáng tin không ? Thử đoán kết quả:</span>
+<span class="kw">const</span> iframe = document.<span class="fn">createElement</span>(<span class="str">'iframe'</span>);
+document.body.<span class="fn">appendChild</span>(iframe);
+<span class="kw">const</span> iframeArray = <span class="kw">new</span> iframe.contentWindow.Array();
+console.<span class="fn">log</span>(iframeArray <span class="kw">instanceof</span> Array); <span class="cmt">// -> false (!) tại sao ?</span></code></pre>
+  </div>
+  <p>&#128073; <em>Tại sao <code>instanceof</code> thất bại khi đối tượng được tạo trong một realm khác (iframe, Worker) ? Và đâu là cách <strong>đáng tin cậy nhất</strong> để kiểm tra kiểu trong JavaScript hiện đại ?</em></p>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 04 · <code>typeof</code>, <code>instanceof</code> &amp; Kiểm tra kiểu đáng tin cậy: <code>Object.prototype.toString</code>, <code>Array.isArray</code></div>
+    <p class="nd">Giải mã lỗi lịch sử <code>typeof null === 'object'</code>, phân tích tại sao <code>instanceof</code> thất bại cross-realm, và xây dựng chiến lược kiểm tra kiểu đáng tin cậy nhất cho code production.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0002-type-coercion.html">&#8592; Trước</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy chạy <code>npm test</code> trong thư mục <code>practice</code>, quan sát từng test case và hỏi tôi bất cứ điều gì bạn muốn làm rõ!</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

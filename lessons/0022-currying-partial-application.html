@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 22 · Pure Functions, Currying &amp; Partial Application</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 06 · Bài 22 (Mở đầu Module 06)</span>
+  <h1>Bài 22 · Pure Functions, Currying &amp; Partial Application</h1>
+  <p class="subtitle">Nền tảng lập trình hàm (Functional Programming) trong JavaScript: Làm chủ khái niệm Hàm thuần khiết, phân biệt bản chất Currying vs Partial Application và tự tay code polyfill chuẩn Lodash/Ramda hỗ trợ placeholder.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Viết được hàm thuần khiết, tự cài đặt <code>curry()</code> (hỗ trợ N tham số và placeholder <code>_</code>), <code>partial()</code> và vận dụng vào pipeline xử lý dữ liệu thực tế.</p>
+
+  <!-- BẮC CẦU TỪ MODULE 05 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Module 05 sang Module 06</div>
+    <p>Ở Module 05, chúng ta đã nắm vững cách kiểm soát dòng chảy bất đồng bộ với Event Loop, Promise và Concurrency Limiter. Bước sang <strong>Module 06: Functional Programming &amp; Utility Polyfills</strong>, trọng tâm chuyển sang <em>nghệ thuật biến đổi hàm (Function Transformation)</em> &mdash; bộ kỹ năng live-coding then chốt trong mọi vòng phỏng vấn Frontend Senior.</p>
+    <p>Bài học này đặt nền móng với <strong>Pure Functions</strong> và 2 kỹ thuật tách/ghép tham số kinh điển: <strong>Currying</strong> và <strong>Partial Application</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1: PURE FUNCTIONS -->
+  <h2>1. Pure Functions (Hàm thuần khiết) &amp; Determinism</h2>
+  <p>Một hàm được gọi là <strong>Pure Function</strong> khi và chỉ khi thỏa mãn đồng thời 2 điều kiện bất di bất dịch :</p>
+  <ol>
+    <li><strong>Tính xác định (Determinism) :</strong> Với cùng một tập đối số truyền vào, hàm <em>luôn luôn</em> trả về cùng một kết quả duy nhất.</li>
+    <li><strong>Không có tác dụng phụ (No Side Effects) :</strong> Hàm không làm thay đổi bất kỳ trạng thái nào bên ngoài phạm vi của nó (không mutate tham số, không sửa biến global, không gọi HTTP request hay ghi file/console).</li>
+  </ol>
+
+  <table class="data">
+    <thead>
+      <tr><th>Đặc điểm</th><th>Pure Function &#9989;</th><th>Impure Function &#10060;</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Tính đoán trước</strong></td>
+        <td>100% dự đoán được output từ input</td>
+        <td>Phụ thuộc thời gian, state ngoài (<code>Date.now()</code>, <code>Math.random()</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Tác dụng phụ</strong></td>
+        <td>Không làm biến đổi bất kỳ dữ liệu ngoài nào</td>
+        <td>Mutate object/array truyền vào, ghi log, gọi DOM/API</td>
+      </tr>
+      <tr>
+        <td><strong>Khả năng Test &amp; Cache</strong></td>
+        <td>Cực kỳ dễ viết Unit Test, an toàn để Memoize</td>
+        <td>Khó mock, không thể cache kết quả an toàn</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; So sánh Pure vs Impure Function</span>
+    <pre><code><span class="cmt">// &#10060; Impure: Mutate mảng gốc và phụ thuộc biến ngoài</span>
+<span class="kw">let</span> discount = <span class="num">0.1</span>;
+<span class="kw">function</span> <span class="fn">applyDiscountImpure</span>(cart) {
+  cart.<span class="fn">forEach</span>(item => item.price -= item.price * discount); <span class="cmt">// Mutate!</span>
+  <span class="kw">return</span> cart;
+}
+
+<span class="cmt">// &#9989; Pure: Không mutate cart, trả về mảng mới độc lập</span>
+<span class="kw">function</span> <span class="fn">applyDiscountPure</span>(cart, discountRate) {
+  <span class="kw">return</span> cart.<span class="fn">map</span>(item => ({
+    ...item,
+    price: item.price * (<span class="num">1</span> - discountRate)
+  }));
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 2: CURRYING -->
+  <h2>2. Currying: Biến đổi hàm N-arity thành chuỗi Unary Functions</h2>
+  <p><strong>Currying</strong> (đặt theo tên nhà toán học Haskell Curry) là kỹ thuật chuyển đổi một hàm nhận $N$ tham số $f(a, b, c, ...)$ thành một chuỗi các hàm, mỗi hàm chỉ nhận <strong>1 tham số duy nhất</strong> : $f(a)(b)(c)...$</p>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Arity là gì ?</div>
+    <p><strong>Arity</strong> là số lượng tham số mà một hàm khai báo nhận vào, được truy xuất thông qua thuộc tính <code>fn.length</code> trong JavaScript (không tính các tham số có giá trị mặc định hoặc rest parameters <code>...rest</code>).</p>
+  </div>
+
+  <h3>Cài đặt <code>curry()</code> tổng quát (Tự động tích lũy tham số)</h3>
+  <p>Một hàm <code>curry</code> hiện đại trong JavaScript cho phép người dùng truyền tham số linh hoạt: truyền từng cái <code>curried(1)(2)(3)</code> hoặc truyền nhiều cái một lúc <code>curried(1, 2)(3)</code>:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Implementation chuẩn của curry()</span>
+    <pre><code><span class="kw">function</span> <span class="fn">curry</span>(fn) {
+  <span class="kw">return function</span> <span class="fn">curried</span>(...args) {
+    <span class="cmt">// Nếu đã tích lũy đủ số lượng tham số của fn gốc</span>
+    <span class="kw">if</span> (args.length >= fn.length) {
+      <span class="kw">return</span> fn.<span class="fn">apply</span>(<span class="kw">this</span>, args);
+    }
+    <span class="cmt">// Nếu chưa đủ, trả về hàm mới để nhận thêm tham số tiếp theo</span>
+    <span class="kw">return function</span> (...nextArgs) {
+      <span class="kw">return</span> curried.<span class="fn">apply</span>(<span class="kw">this</span>, args.<span class="fn">concat</span>(nextArgs));
+    }.<span class="fn">bind</span>(<span class="kw">this</span>); <span class="cmt">// Bảo toàn this context</span>
+  };
+}
+
+<span class="cmt">// Sử dụng:</span>
+<span class="kw">function</span> <span class="fn">multiply3</span>(a, b, c) { <span class="kw">return</span> a * b * c; }
+<span class="kw">const</span> curriedMult = <span class="fn">curry</span>(multiply3);
+
+curriedMult(<span class="num">2</span>)(<span class="num">3</span>)(<span class="num">4</span>);    <span class="cmt">// 24</span>
+curriedMult(<span class="num">2</span>, <span class="num">3</span>)(<span class="num">4</span>);    <span class="cmt">// 24</span>
+curriedMult(<span class="num">2</span>)(<span class="num">3</span>, <span class="num">4</span>);    <span class="cmt">// 24</span>
+curriedMult(<span class="num">2</span>, <span class="num">3</span>, <span class="num">4</span>);    <span class="cmt">// 24</span></code></pre>
+  </div>
+
+  <!-- PHẦN 3: ADVANCED CURRY WITH PLACEHOLDER -->
+  <h2>3. Advanced Curry với Placeholder (<code>_</code>)</h2>
+  <p>Trong các thư viện như Lodash hay Ramda, bạn có thể truyền ký tự giữ chỗ <code>_</code> để bỏ qua tham số ở vị trí hiện tại và điền nó ở lần gọi sau :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt curryWithPlaceholder</span>
+    <pre><code><span class="kw">const</span> _ = Symbol(<span class="str">'curry_placeholder'</span>);
+
+<span class="kw">function</span> <span class="fn">curryWithPlaceholder</span>(fn) {
+  <span class="kw">return function</span> <span class="fn">curried</span>(...args) {
+    <span class="kw">const</span> hasPlaceholder = args.<span class="fn">slice</span>(<span class="num">0</span>, fn.length).<span class="fn">includes</span>(_);
+    <span class="kw">const</span> effectiveArgs = args.<span class="fn">filter</span>(arg => arg !== _);
+
+    <span class="kw">if</span> (args.length >= fn.length && !hasPlaceholder && effectiveArgs.length >= fn.length) {
+      <span class="kw">return</span> fn.<span class="fn">apply</span>(<span class="kw">this</span>, args.<span class="fn">slice</span>(<span class="num">0</span>, fn.length));
+    }
+
+    <span class="kw">return function</span> (...nextArgs) {
+      <span class="kw">let</span> nextIndex = <span class="num">0</span>;
+      <span class="kw">const</span> combined = args.<span class="fn">map</span>(arg =>
+        arg === _ && nextIndex < nextArgs.length ? nextArgs[nextIndex++] : arg
+      );
+      <span class="kw">while</span> (nextIndex < nextArgs.length) {
+        combined.<span class="fn">push</span>(nextArgs[nextIndex++]);
+      }
+      <span class="kw">return</span> curried.<span class="fn">apply</span>(<span class="kw">this</span>, combined);
+    }.<span class="fn">bind</span>(<span class="kw">this</span>);
+  };
+}
+
+<span class="cmt">// Ví dụ định dạng tin nhắn:</span>
+<span class="kw">const</span> formatMsg = <span class="fn">curryWithPlaceholder</span>((type, user, text) => `[${type}] ${user}: ${text}`);
+<span class="kw">const</span> logToAlice = <span class="fn">formatMsg</span>(_, <span class="str">'Alice'</span>, _); <span class="cmt">// Cố định người nhận Alice</span>
+
+logToAlice(<span class="str">'INFO'</span>)(<span class="str">'Chào buổi sáng'</span>); <span class="cmt">// "[INFO] Alice: Chào buổi sáng"</span></code></pre>
+  </div>
+
+  <!-- PHẦN 4: PARTIAL APPLICATION -->
+  <h2>4. Partial Application (Áp dụng một phần)</h2>
+  <p><strong>Partial Application</strong> là kỹ thuật nhận một hàm có $N$ tham số, <em>cố định trước $K$ tham số</em> ($K < N$), và trả về một hàm mới nhận $N - K$ tham số còn lại trong <strong>1 lần gọi tiếp theo</strong>.</p>
+
+  <table class="data">
+    <thead>
+      <tr><th>Tiêu chí</th><th>Currying</th><th>Partial Application</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Bản chất</strong></td>
+        <td>Biến đổi $1$ hàm $N$ tham số thành chuỗi $N$ hàm nhận từng tham số</td>
+        <td>Cố định sẵn một số tham số, trả về hàm nhận hết phần còn lại</td>
+      </tr>
+      <tr>
+        <td><strong>Số lần gọi</strong></td>
+        <td>Có thể gọi lồng nhau nhiều lần liên tiếp đến khi đủ: <code>f(a)(b)(c)</code></td>
+        <td>Thường chỉ gọi qua 2 bước: <code>partial(f, a, b)(c)</code></td>
+      </tr>
+      <tr>
+        <td><strong>Hàm tích hợp sẵn</strong></td>
+        <td>Không có sẵn trong JS chuẩn (phải tự viết hoặc dùng thư viện)</td>
+        <td>Có sẵn thông qua <code>Function.prototype.bind(thisArg, ...presetArgs)</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt partial() Polyfill</span>
+    <pre><code><span class="kw">function</span> <span class="fn">partial</span>(fn, ...presetArgs) {
+  <span class="kw">return function</span> (...laterArgs) {
+    <span class="kw">return</span> fn.<span class="fn">apply</span>(<span class="kw">this</span>, presetArgs.<span class="fn">concat</span>(laterArgs));
+  };
+}
+
+<span class="cmt">// Ứng dụng: Tạo API URL Builder</span>
+<span class="kw">function</span> <span class="fn">buildApiUrl</span>(version, resource, id) {
+  <span class="kw">return</span> `/api/${version}/${resource}/${id}`;
+}
+
+<span class="kw">const</span> getV2User = <span class="fn">partial</span>(buildApiUrl, <span class="str">'v2'</span>, <span class="str">'users'</span>);
+getV2User(<span class="str">'42'</span>); <span class="cmt">// "/api/v2/users/42"</span></code></pre>
+  </div>
+
+  <!-- PHẦN 5: ỨNG DỤNG THỰC TẾ TRONG FRONTEND -->
+  <h2>5. Ứng dụng thực chiến trong Frontend &amp; React</h2>
+  <ul>
+    <li><strong>Tạo Custom Logger / Analytics :</strong> Cố định trước App Name, Environment, Log Level rồi truyền hàm con cho các modules sử dụng.</li>
+    <li><strong>Data Transformation Pipelines :</strong> Kết hợp hàm curried với <code>Array.prototype.map</code> hoặc <code>filter</code> để tạo phong cách lập trình Point-free thanh lịch :
+      <div class="code-block">
+        <pre><code><span class="kw">const</span> getProp = <span class="fn">curry</span>((prop, obj) => obj[prop]);
+<span class="kw">const</span> getUserNames = users => users.<span class="fn">map</span>(<span class="fn">getProp</span>(<span class="str">'name'</span>));</code></pre>
+      </div>
+    </li>
+    <li><strong>Event Handlers trong React :</strong> Thay vì viết arrow functions inline trong JSX <code>onClick={() =&gt; handleDelete(id)}</code>, bạn có thể dùng Currying để tạo hàm handler đóng gói <code>id</code> từ trước : <code>onClick={handleDelete(id)}</code>.</li>
+  </ul>
+
+  <!-- PHẦN 6: QUIZZES -->
+  <h2>6. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Phép toán nào sau đây phân biệt chính xác nhất giữa Currying và Partial Application ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Cả hai đều có thể dùng Closure và đều áp dụng tốt cho Pure Functions.">A. Currying chỉ áp dụng cho Pure Functions, còn Partial Application áp dụng cho Impure Functions</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Currying biến hàm f(a,b,c) thành chuỗi các hàm unary f(a)(b)(c), trong khi Partial Application cố định trước k tham số và trả về hàm nhận tất cả các tham số còn lại trong lần gọi tiếp theo.">B. Currying chuyển hàm N tham số thành chuỗi N hàm 1 tham số; Partial Application cố định K tham số và nhận phần còn lại</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Function.prototype.bind là triển khai của Partial Application, không phải Currying.">C. Function.prototype.bind() trong JS chính là một triển khai của Currying</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Cho hàm <code>function fn(a, b = 1, ...rest) {}</code>. Giá trị của <code>fn.length</code> là bao nhiêu ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! fn.length chỉ đếm số lượng tham số trước tham số đầu tiên có giá trị mặc định, và hoàn toàn bỏ qua rest parameter (...rest). Do đó ở đây fn.length = 1.">A. 1 (chỉ đếm tham số trước tham số có default value và bỏ qua rest param)</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Tham số có default value không được tính vào fn.length.">B. 2</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Rest parameter không được tính vào fn.length.">C. 3 (hoặc Infinity)</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 7: CHECKLIST -->
+  <h2>7. Checklist tự kiểm chứng — Bài 22</h2>
+  <div class="checklist">
+    <div>&#9989; Định nghĩa chuẩn 2 điều kiện của Pure Function (Deterministic &amp; No Side Effects).</div>
+    <div>&#9989; Giải thích được thuộc tính <code>fn.length</code> (Arity) và cách nó hoạt động với default/rest params.</div>
+    <div>&#9989; Tự tay code hàm <code>curry()</code> hỗ trợ gọi rời rạc hoặc gộp nhiều đối số và bảo toàn <code>this</code>.</div>
+    <div>&#9989; Hiểu và viết được <code>partial()</code> ứng dụng trong URL Builder hoặc Event Handlers.</div>
+    <div>&#9989; Toàn bộ 23 test suites (145/145 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo trong Module 06</div>
+    <div class="nt">Bài 23 · Live-coding: Cài đặt Debounce &amp; Throttle (Leading, Trailing &amp; Cancel options)</div>
+    <p class="nd">Cặp đôi utility kinh điển tối ưu hiệu năng sự kiện cuộn/gõ phím trên trình duyệt &mdash; bài toán live-coding xuất hiện trong 90% buổi phỏng vấn Frontend.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0021-concurrency-limiter.html">&#8592; Bài 21</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0023-debounce-throttle.html">Bài 23 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Currying &amp; Partial Application và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

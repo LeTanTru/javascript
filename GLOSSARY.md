@@ -232,6 +232,23 @@ _Avoid_: Method hijacking, object monkey-patch
 Kỹ thuật truyền trước một tập hợp con các tham số vào một hàm và trả về một hàm mới (Bound Function) chờ nhận nốt các tham số còn lại khi được thực thi, được hiện thực hóa qua `Function.prototype.bind`.
 _Avoid_: Partial call, parameter caching
 
+**Event Loop**:
+Cơ chế điều phối ngoại vi của môi trường lưu trữ (Hosting Environment) liên tục giám sát Call Stack và các hàng đợi tác vụ nhằm hiện thực hóa mô hình xử lý bất đồng bộ không chặn (Non-blocking Asynchronous Concurrency) trên một luồng thực thi đơn nhất.
+_Avoid_: Thread scheduler, process loop
+
+**Task Queue (Macrotask Queue)**:
+Hàng đợi FIFO lưu trữ các callback đã sẵn sàng từ các Web APIs hoặc Libuv như `setTimeout`, `setInterval`, I/O events và UI rendering events. Mỗi lượt quay của Event Loop chỉ bốc đúng một Macrotask.
+_Avoid_: Event queue, message queue
+
+**Microtask Queue**:
+Hàng đợi FIFO ưu tiên cao lưu trữ các tác vụ vi mô như `Promise.then/catch/finally`, `queueMicrotask`, và `MutationObserver`. Event Loop bắt buộc phải vét cạn (drain) toàn bộ Microtask Queue trước khi chuyển sang giai đoạn kế tiếp.
+_Avoid_: Sub-task queue, inner queue
+
+**Event Loop Starvation**:
+Hiện tượng vòng lặp sự kiện bị phong tỏa hoàn toàn (không thể render UI hay xử lý các Macrotask kế tiếp) do một chuỗi đệ quy tác vụ vi mô liên tục nhồi thêm việc vào Microtask Queue khiến hàng đợi này không bao giờ xả cạn.
+_Avoid_: Loop freeze, stack blocking
+
+
 
 
 

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 16 · Kiến trúc Event Loop trên Trình duyệt &amp; Node.js (Call Stack, Task Queue, Microtask Queue)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 05 · Bài 16</span>
+  <h1>Bài 16 · Kiến trúc Event Loop trên Trình duyệt &amp; Node.js (Call Stack, Task Queue, Microtask Queue)</h1>
+  <p class="subtitle">Giải phẫu mô hình Concurrency Model đơn luồng (Single-threaded) của JavaScript, cơ chế điều phối giữa V8 Call Stack, Web APIs / Libuv, Task Queue và Microtask Queue.</p>
+  <p class="meta-line">&#9203; ~22 phút &middot; &#127919; Mục tiêu: Nắm vững giải thuật 1 tick của Event Loop theo chuẩn HTML Living Standard, phân biệt rạch ròi quy trình vét cạn Microtasks và cách một Macrotask được kích hoạt, nhận diện hiện tượng Event Loop Starvation.</p>
+
+  <!-- BẮC CẦU TỪ MODULE 04 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Module 04 sang Module 05</div>
+    <p>Ở Module 04, chúng ta đã hiểu tường tận cách các hàm được kích hoạt và ngữ cảnh <code>this</code> được gắn kết. Tuy nhiên, một sự thật kỹ thuật căn bản : <strong>JavaScript Engine (như Google V8) là một môi trường đơn luồng (Single-threaded)</strong> &mdash; nó chỉ sở hữu duy nhất <strong>một Call Stack</strong> tại một thời điểm.</p>
+    <p>Vậy làm thế nào mà trình duyệt hay máy chủ Node.js có thể tải hàng trăm request mạng, nghe click chuột, chạy animation 120 FPS mà giao diện không hề bị đóng băng (freeze) ? Bí mật nằm ở kiến trúc ngoại vi bao bọc quanh Engine : <strong>Event Loop (Vòng lặp sự kiện)</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Bốn trụ cột của JavaScript Concurrency Model</h2>
+  <p>Một quan niệm sai lầm rất phổ biến của lập trình viên là nghĩ <code>setTimeout</code> hay <code>fetch</code> là tính năng của ngôn ngữ JavaScript. Thực chất, chúng là các API do môi trường lưu trữ (Hosting Environment &mdash; Trình duyệt hoặc Node.js) cung cấp !</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Trụ cột</th>
+          <th>Bản chất &amp; Cấu trúc dữ liệu</th>
+          <th>Nhiệm vụ chính</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. Call Stack</strong></td>
+          <td>Ngăn xếp LIFO (Last In, First Out) thuộc JavaScript Engine (V8).</td>
+          <td>Nơi thực thi trực tiếp các dòng mã đồng bộ (Synchronous code). Chỉ có 1 Call Stack duy nhất chạy trên main thread.</td>
+        </tr>
+        <tr>
+          <td><strong>2. Web APIs / Libuv</strong></td>
+          <td>Môi trường C++ đa luồng chạy ngầm của Browser (Web APIs) hoặc Node.js (Libuv C++ Threadpool).</td>
+          <td>Xử lý các tác vụ tốn thời gian: đếm ngược timer, gửi request HTTP/HTTPS, đọc ghi file, lắng nghe DOM events.</td>
+        </tr>
+        <tr>
+          <td><strong>3. Task Queue (Macrotask)</strong></td>
+          <td>Hàng đợi FIFO (First In, First Out).</td>
+          <td>Chứa các callback đã hoàn thành chờ được đưa lên Call Stack: <code>setTimeout</code>, <code>setInterval</code>, UI Rendering events.</td>
+        </tr>
+        <tr>
+          <td><strong>4. Microtask Queue</strong></td>
+          <td>Hàng đợi FIFO ưu tiên cao đặc biệt (High-priority queue).</td>
+          <td>Chứa các tác vụ bất đồng bộ vi mô: <code>Promise.then/catch/finally</code>, <code>queueMicrotask()</code>, <code>MutationObserver</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Giải thuật 1 Tick của Event Loop (Chuẩn HTML Living Standard)</h2>
+  <p>Event Loop hoạt động giống như một vòng lặp <code>while (true)</code> liên tục giám sát Call Stack và các hàng đợi. Trong một chu kỳ quay (1 Tick), Event Loop tuân thủ thứ tự nghiêm ngặt sau :</p>
+
+  <ol>
+    <li><strong>Thực thi Call Stack :</strong> Chạy mã đồng bộ cho đến khi Call Stack hoàn toàn rỗng.</li>
+    <li><strong>Vét cạn Microtask Queue (Drain Microtasks) :</strong>
+      <p>Lấy từng microtask ra và thực thi trên Call Stack. <em>Điểm mấu chốt :</em> Event Loop sẽ KHÔNG DỪNG LẠI cho đến khi Microtask Queue <strong>trống rỗng hoàn toàn</strong> ! Nếu một microtask tiếp tục tạo ra microtask mới, microtask mới sẽ được chạy tiếp ngay trong lượt này.</p>
+    </li>
+    <li><strong>Giai đoạn Render (Rendering Pipeline &mdash; chỉ có trên Trình duyệt) :</strong>
+      <p>Trình duyệt kiểm tra xem đã đến thời điểm làm mới khung hình chưa (thường là mỗi 16.6ms cho màn hình 60Hz). Nếu có, nó kích hoạt <code>requestAnimationFrame</code>, tính toán lại CSS Style, Layout và Paint giao diện lên màn hình.</p>
+    </li>
+    <li><strong>Bốc duy nhất 1 Macrotask :</strong>
+      <p>Event Loop bốc <strong>đúng một task</strong> đứng đầu từ Task Queue (Macrotask) đưa lên Call Stack để thực thi.</p>
+    </li>
+    <li><strong>Lặp lại vòng tuần hoàn :</strong> Quay lại Bước 2 (tiếp tục vét sạch mọi Microtask mới sinh ra từ Macrotask vừa chạy).</li>
+  </ol>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Thí nghiệm chứng minh chu kỳ 1 Tick</span>
+    <pre><code>console.<span class="fn">log</span>(<span class="str">"1. Đồng bộ Start"</span>);
+
+setTimeout(() => {
+  console.<span class="fn">log</span>(<span class="str">"4. Macrotask (setTimeout)"</span>);
+}, <span class="num">0</span>);
+
+Promise.<span class="fn">resolve</span>().<span class="fn">then</span>(() => {
+  console.<span class="fn">log</span>(<span class="str">"3. Microtask (Promise)"</span>);
+});
+
+console.<span class="fn">log</span>(<span class="str">"2. Đồng bộ End"</span>);
+
+<span class="cmt">// THỨ TỰ IN RA MÀN HÌNH:</span>
+<span class="cmt">// 1. Đồng bộ Start</span>
+<span class="cmt">// 2. Đồng bộ End</span>
+<span class="cmt">// 3. Microtask (Promise)  <-- Vét cạn trước khi rời tick</span>
+<span class="cmt">// 4. Macrotask (setTimeout) <-- Chỉ được bốc sau khi Microtask queue đã rỗng</span></code></pre>
+  </div>
+
+  <div class="callout warning">
+    <div class="ct">&#9888; Hiện tượng Microtask Starvation (Đóng băng trình duyệt)</div>
+    <p>Vì quy tắc <em>"phải vét cạn toàn bộ Microtask Queue trước khi sang bước tiếp theo"</em>, nếu bạn tạo ra một chuỗi đệ quy microtask vô tận (ví dụ: một Promise <code>.then()</code> liên tục trả về chính nó), Call Stack và Microtask Queue sẽ bị khóa chết.</p>
+    <p>Hậu quả : Trình duyệt bị <strong>UI Freeze (treo đơ)</strong> hoàn toàn, người dùng không thể click chuột hay cuộn trang, và các <code>setTimeout</code> trong Macrotask Queue sẽ bị <strong>bỏ đói vĩnh viễn (Starvation)</strong> !</p>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. So sánh Event Loop: Trình duyệt vs Node.js (Libuv)</h2>
+  <p>Mặc dù đều chạy JavaScript V8, cơ chế Event Loop bên dưới có kiến trúc phân tầng khác biệt :</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Đặc điểm</th>
+          <th>Event Loop trên Trình duyệt</th>
+          <th>Event Loop trên Node.js (Libuv)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Tiêu chuẩn quy định</strong></td>
+          <td>Đặc tả <strong>HTML Living Standard</strong> (W3C / WHATWG).</td>
+          <td>Thư viện C++ <strong>Libuv</strong> đa nền tảng.</td>
+        </tr>
+        <tr>
+          <td><strong>Các giai đoạn (Phases)</strong></td>
+          <td>Mô hình phẳng: Stack &rarr; Microtasks &rarr; Render &rarr; 1 Macrotask.</td>
+          <td><strong>6 Phases tuần hoàn :</strong><br>
+            1. Timers (<code>setTimeout</code>, <code>setInterval</code>)<br>
+            2. Pending Callbacks (I/O lỗi hệ thống)<br>
+            3. Idle, Prepare (nội bộ)<br>
+            4. Poll (nhận I/O mới, đọc file/socket)<br>
+            5. Check (<code>setImmediate</code>)<br>
+            6. Close callbacks (<code>socket.on('close')</code>)
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Hàng đợi ưu tiên đặc biệt</strong></td>
+          <td>Chỉ có Microtask Queue chuẩn (Promise, MutationObserver, <code>queueMicrotask</code>).</td>
+          <td>Bổ sung <strong><code>process.nextTick</code> Queue</strong> được xả cạn trước cả Promise microtasks tại các bước chuyển tiếp phase.</td>
+        </tr>
+        <tr>
+          <td><strong>Render Pipeline</strong></td>
+          <td>Có (gắn liền với màn hình, CSSOM, Layout).</td>
+          <td>Không có (Node.js là môi trường headless server).</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Giữa một tác vụ Macrotask (setTimeout 0ms) và một tác vụ Microtask (Promise.then), điều gì xảy ra ngay sau khi Call Stack đồng bộ vừa chạy xong ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Macrotask chỉ được bốc ra SAU KHI toàn bộ microtask queue đã trống rỗng.">A. Event Loop bốc Macrotask từ Task Queue ra chạy trước</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Theo chuẩn HTML, ngay khi Call Stack trống, Event Loop sẽ chuyển sang trạng thái drain Microtask Queue và thực thi toàn bộ microtasks có trong hàng đợi trước khi xem xét tới Macrotasks.">B. Event Loop vét cạn toàn bộ các tác vụ trong Microtask Queue trước</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Không có cơ chế random hoặc chạy luân phiên 50/50 ở đây.">C. Cả hai tác vụ được chọn ngẫu nhiên tùy thuộc vào tải của CPU</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Tại sao một vòng lặp đệ quy setTimeout 0ms (setTimeout(fn, 0)) KHÔNG làm đóng băng trình duyệt, trong khi đệ quy Promise.resolve().then(fn) lại làm treo cứng UI ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Mỗi vòng lặp Event Loop chỉ lấy DUY NHẤT 1 Macrotask rồi nhường quyền cho Render và các tác vụ khác. Trong khi đó Microtask bị bắt buộc vét cạn 100% trước khi chuyển bước, khiến Engine bị mắc kẹt vô tận trong Microtask Queue.">A. Vì mỗi tick Event Loop chỉ bốc đúng 1 Macrotask rồi nhường quyền cho Render, còn Microtask bắt buộc phải vét sạch 100% trước khi bước tiếp</button>
+    <button class="opt" data-correct="false" data-explain="Sai! setTimeout(fn, 0) vẫn chạy trên cùng main thread của V8.">B. Vì setTimeout chạy trên một Web Worker tách biệt hoàn toàn</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Trình duyệt không hề tự động ngắt Promise đệ quy.">C. Vì trình duyệt tự động giới hạn độ sâu của Promise nhưng không giới hạn setTimeout</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>5. Checklist tự kiểm chứng trước khi sang Bài 17</h2>
+  <div class="checklist">
+    <div>&#9989; Vẽ được sơ đồ 4 thành phần: Call Stack, Web APIs / Libuv, Task Queue, Microtask Queue.</div>
+    <div>&#9989; Thuộc lòng giải thuật 1 tick của Event Loop theo chuẩn HTML Living Standard.</div>
+    <div>&#9989; Giải thích được vì sao Microtask Queue luôn được ưu tiên vét cạn trước Macrotask tiếp theo.</div>
+    <div>&#9989; Phân biệt được sự khác nhau giữa Event Loop trình duyệt và 6 phases của Libuv trong Node.js.</div>
+    <div>&#9989; Toàn bộ 108 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 17 :</div>
+    <p>Nếu bạn xếp hàng một chuỗi gồm: <code>setTimeout(fn, 0)</code>, <code>Promise.resolve().then(fn)</code>, <code>queueMicrotask(fn)</code>, và <code>requestAnimationFrame(fn)</code>...</p>
+    <p><em>"Thứ tự chính xác từ trên xuống dưới là gì ? Tại sao `requestAnimationFrame` lại là cứu tinh số 1 cho các animation mượt mà mà `setTimeout` không bao giờ thay thế được ? Hãy chuẩn bị giải phẫu <strong>Bài 17: Thứ tự thực thi Microtasks vs Macrotasks vs requestAnimationFrame</strong> !"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 17 · Thứ tự thực thi: Microtasks vs Macrotasks vs `requestAnimationFrame` vs `queueMicrotask`</div>
+    <p class="nd">Phân tích chu kỳ Rendering Frame (60Hz/120Hz), giải mã chính xác thời điểm rAF kích hoạt và bài toán phỏng vấn thứ tự thực thi kinh điển.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0015-call-apply-bind-polyfills.html">&#8592; Bài 15</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để xem 6 bài test kiểm chứng kiến trúc Event Loop và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

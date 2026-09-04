@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  BÀI 02: Bản chất Type Coercion: Thuật toán ToPrimitive, ToNumber, ToString (ECMA-262)
+  Lộ trình: JavaScript Core Mastery for Frontend Interview
+  ============================================================================
+-->
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 02 · Bản chất Type Coercion: Thuật toán ToPrimitive, ToNumber, ToString (ECMA-262)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 01 · Bài 02</span>
+  <h1>Bản chất Type Coercion: Thuật toán ToPrimitive, ToNumber, ToString</h1>
+  <p class="subtitle">Giải mã toàn bộ ma trận ép kiểu ngầm (Implicit Coercion), cơ chế Autoboxing và làm chủ các câu hỏi phỏng vấn trắc nghiệm "quái đản" nhất.</p>
+  <p class="meta-line">⏱ ~15 phút · 🎯 Mục tiêu: Giải thích cặn kẽ từng bước chạy của ToPrimitive theo chuẩn ECMA-262, phân tích chính xác 100% các phép tính bẫy, và biết cách can thiệp bằng Symbol.toPrimitive.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 01 -->
+  <div class="callout bridge">
+    <div class="ct">🌉 Bắc cầu từ câu hỏi tư duy ở Bài 01</div>
+    <p>Ở Bài 01, chúng ta đã chứng minh Primitive types (string, number, boolean) là những giá trị thô lưu trực tiếp trên Call Stack, hoàn toàn không phải Object. Vậy tại sao ta lại có thể viết:</p>
+    <div class="code-block" style="margin-top:8px;">
+      <span class="code-label">JavaScript</span>
+<pre><code><span class="kw">const</span> str = <span class="str">"hello"</span>;
+console.<span class="fn">log</span>(str.<span class="fn">toUpperCase</span>()); <span class="cmt">// -> Gọi method như một Object!</span>
+
+console.<span class="fn">log</span>([] + {});           <span class="cmt">// -> Ra "[object Object]"?!</span>
+console.<span class="fn">log</span>([] - <span class="num">1</span>);            <span class="cmt">// -> Ra -1?!</span></code></pre>
+    </div>
+    <p>Liệu JavaScript Engine có đang "đoán mò" (magic) ? <strong>Hoàn toàn không.</strong> Tất cả những hành vi trên đều được điều phối bởi 2 cơ chế nghiêm ngặt: <strong>Autoboxing (Wrapper Objects)</strong> và hệ thống thuật toán trừu tượng <strong>Abstract Operations (ECMA-262)</strong>.</p>
+  </div>
+
+  <h2>1. Autoboxing: Primitive gọi method như thế nào ?</h2>
+  <p>Khi bạn truy cập một thuộc tính hoặc phương thức trên một giá trị Primitive (ví dụ: <code>str.toUpperCase()</code> hoặc <code>(42).toFixed(2)</code>), V8 Engine thực hiện cơ chế gọi là <strong>Autoboxing (Boxing)</strong>:</p>
+
+  <ol>
+    <li>V8 tạm thời khởi tạo một đối tượng bọc (Wrapper Object) tương ứng trên Memory Heap thông qua constructor nội bộ: <code>new String(str)</code> hoặc <code>new Number(num)</code>.</li>
+    <li>Đối tượng wrapper này kế thừa các phương thức từ prototype tương ứng (ví dụ: <code>String.prototype.toUpperCase</code>) và thực thi hàm.</li>
+    <li>Ngay sau khi phương thức trả về kết quả, đối tượng wrapper tạm thời này <strong>lập tức bị hủy và sẵn sàng để Garbage Collector thu hồi</strong>.</li>
+  </ol>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript — Minh chứng Autoboxing &amp; Bẫy gán thuộc tính</span>
+<pre><code><span class="kw">const</span> greeting = <span class="str">"hello"</span>;
+
+<span class="cmt">// 1. V8 tạo new String("hello") tạm thời -> gọi toUpperCase() -> huỷ wrapper</span>
+console.<span class="fn">log</span>(greeting.<span class="fn">toUpperCase</span>()); <span class="cmt">// "HELLO"</span>
+
+<span class="cmt">// 2. Thử gán thuộc tính mới vào primitive</span>
+greeting.myProp = <span class="num">100</span>;
+
+<span class="cmt">// Trong Non-Strict mode: V8 tạo wrapper tạm, gán myProp = 100 vào wrapper đó,</span>
+<span class="cmt">// rồi huỷ wrapper ngay lập tức! Dòng dưới tạo wrapper mới hoàn toàn:</span>
+console.<span class="fn">log</span>(greeting.myProp); <span class="cmt">// -> undefined!</span>
+
+<span class="cmt">// Trong Strict Mode / ESM ("type": "module"):</span>
+<span class="cmt">// JS Engine lập tức ném lỗi: TypeError: Cannot create property 'myProp' on string 'hello'</span></code></pre>
+  </div>
+
+  <h2>2. Ba thuật toán cốt lõi trong ECMA-262: ToPrimitive, ToNumber, ToString</h2>
+  <p>Khi JavaScript thực hiện các phép toán hoặc so sánh giữa các kiểu dữ liệu khác nhau, nó không ép kiểu tùy tiện mà tuân theo các <strong>Abstract Operations (Thao tác trừu tượng)</strong> được định nghĩa trong chuẩn <a href="https://tc39.es/ecma262/#sec-type-conversion" target="_blank">ECMA-262 §7.1</a>.</p>
+
+  <h3>A. Thuật toán <code>ToPrimitive(input, preferredType)</code> (ECMA-262 §7.1.1)</h3>
+  <p>Khi một đối tượng (Object/Array) cần chuyển đổi thành một giá trị nguyên thủy (Primitive), engine sẽ thực hiện theo thứ tự ưu tiên sau:</p>
+
+  <div class="code-block">
+    <span class="code-label">Quy trình thực thi của ToPrimitive</span>
+<pre><code>1. Nếu đối tượng có phương thức [Symbol.toPrimitive](hint):
+   -> Gọi phương thức này với hint ("number", "string", hoặc "default").
+   -> Nếu trả về Primitive -> DỪNG và lấy giá trị đó.
+   -> Nếu trả về Object -> Ném TypeError!
+
+2. Nếu KHÔNG có Symbol.toPrimitive:
+   -> Nếu hint là "string":
+        Thử gọi .toString() -> nếu ra Primitive thì lấy.
+        Nếu không, thử tiếp .valueOf() -> nếu ra Primitive thì lấy.
+   -> Nếu hint là "number" hoặc "default":
+        Thử gọi .valueOf() -> nếu ra Primitive thì lấy.
+        Nếu không, thử tiếp .toString() -> nếu ra Primitive thì lấy.
+
+3. Nếu cả 2 hàm đều không trả về giá trị Primitive:
+   -> Ném TypeError: Cannot convert object to primitive value.</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">💡 Mặc định của Plain Object <code>{}</code> và Array <code>[]</code> trong JavaScript</div>
+    <p>Theo mặc định, phương thức <code>valueOf()</code> của <code>Object</code> và <code>Array</code> trả về <strong>chính nó (tức là Object)</strong>, không phải Primitive!<br>
+    Vì vậy, engine luôn phải chạy tiếp sang bước thứ 2 là gọi <code>toString()</code>:</p>
+    <ul>
+      <li><code>[].toString()</code> &#8594; <code>""</code> (chuỗi rỗng).</li>
+      <li><code>[1, 2, 3].toString()</code> &#8594; <code>"1,2,3"</code>.</li>
+      <li><code>{}.toString()</code> &#8594; <code>"[object Object]"</code>.</li>
+    </ul>
+  </div>
+
+  <h3>B. Thuật toán <code>ToNumber(argument)</code> (ECMA-262 §7.1.3)</h3>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Giá trị đầu vào</th>
+        <th>Kết quả sau ToNumber</th>
+        <th>Lý do &amp; Ghi chú</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>undefined</code></td>
+        <td><code>NaN</code></td>
+        <td>Không thể biểu diễn thành giá trị số hợp lệ</td>
+      </tr>
+      <tr>
+        <td><code>null</code></td>
+        <td><code>0</code></td>
+        <td>Quy ước số học trong C (con trỏ rỗng = 0)</td>
+      </tr>
+      <tr>
+        <td><code>true</code> / <code>false</code></td>
+        <td><code>1</code> / <code>0</code></td>
+        <td>Boolean binary</td>
+      </tr>
+      <tr>
+        <td><code>""</code> (chuỗi rỗng / chỉ có space)</td>
+        <td><code>0</code></td>
+        <td>Bẫy phỏng vấn cực kỳ phổ biến!</td>
+      </tr>
+      <tr>
+        <td><code>"123"</code> / <code>"3.14"</code></td>
+        <td><code>123</code> / <code>3.14</code></td>
+        <td>Chuỗi số hợp lệ</td>
+      </tr>
+      <tr>
+        <td><code>"123abc"</code></td>
+        <td><code>NaN</code></td>
+        <td>Khác với <code>parseInt("123abc")</code> ra 123!</td>
+      </tr>
+      <tr>
+        <td><code>[]</code> (mảng rỗng)</td>
+        <td><code>0</code></td>
+        <td><code>[]</code> &#8594; <code>""</code> &#8594; <code>0</code></td>
+      </tr>
+      <tr>
+        <td><code>[42]</code> (mảng 1 phần tử số)</td>
+        <td><code>42</code></td>
+        <td><code>[42]</code> &#8594; <code>"42"</code> &#8594; <code>42</code></td>
+      </tr>
+      <tr>
+        <td><code>{}</code> (plain object)</td>
+        <td><code>NaN</code></td>
+        <td><code>{}</code> &#8594; <code>"[object Object]"</code> &#8594; <code>NaN</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. Giải mã ma trận toán tử: Phép cộng <code>+</code> vs Các phép toán <code>-, *, /, %</code></h2>
+
+  <div class="callout why">
+    <div class="ct">⚡ Quy tắc vàng của Toán tử Cộng (+) (ECMA-262 §13.15.3)</div>
+    <p>Toán tử <code>+</code> làm cả 2 nhiệm vụ: <strong>Cộng số học</strong> HOẶC <strong>Nối chuỗi</strong>.<br>
+    Quy tắc phân xử:</p>
+    <ol>
+      <li>Chuyển cả 2 toán hạng sang Primitive bằng <code>ToPrimitive()</code> (với hint là <code>"default"</code>).</li>
+      <li>Nếu <strong>ít nhất một trong hai</strong> giá trị sau khi chuyển là kiểu <code>string</code> &#8594; Ép toán hạng còn lại thành chuỗi (<code>ToString</code>) và <strong>nối chuỗi</strong>.</li>
+      <li>Ngược lại &#8594; Ép cả hai sang số (<code>ToNumber</code>) và <strong>thực hiện phép cộng toán học</strong>.</li>
+    </ol>
+  </div>
+
+  <p>Trái lại, các toán tử <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code> <strong>không hỗ trợ kiểu chuỗi</strong>. Chúng luôn luôn ép cả hai vế sang số qua <code>ToNumber()</code>:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript — Từng bước giải mã các biểu thức bẫy</span>
+<pre><code><span class="cmt">// Ví dụ 1: [] + {} -> "[object Object]"</span>
+<span class="cmt">// B1: ToPrimitive([]) -> [].toString() -> ""</span>
+<span class="cmt">// B2: ToPrimitive({}) -> {}.toString() -> "[object Object]"</span>
+<span class="cmt">// B3: Có chuỗi -> Nối: "" + "[object Object]" = "[object Object]"</span>
+console.<span class="fn">log</span>([] + {});
+
+<span class="cmt">// Ví dụ 2: [] - 1 -> -1</span>
+<span class="cmt">// B1: Toán tử trừ -> Bắt buộc ép cả hai về Number</span>
+<span class="cmt">// B2: ToNumber([]) -> [].toString() -> "" -> ToNumber("") -> 0</span>
+<span class="cmt">// B3: 0 - 1 = -1</span>
+console.<span class="fn">log</span>([] - <span class="num">1</span>);
+
+<span class="cmt">// Ví dụ 3: Thứ tự thực thi từ trái sang phải</span>
+console.<span class="fn">log</span>(<span class="num">1</span> + <span class="num">2</span> + <span class="str">"3"</span>);  <span class="cmt">// (1 + 2) = 3 -> 3 + "3" = "33"</span>
+console.<span class="fn">log</span>(<span class="str">"1"</span> + <span class="num">2</span> + <span class="num">3</span>);  <span class="cmt">// ("1" + 2) = "12" -> "12" + 3 = "123"</span>
+
+<span class="cmt">// Ví dụ 4: [1, 2] + [3, 4] -> "1,23,4"</span>
+<span class="cmt">// [1,2].toString() là "1,2", [3,4].toString() là "3,4" -> Nối: "1,2" + "3,4"</span>
+console.<span class="fn">log</span>([<span class="num">1</span>, <span class="num">2</span>] + [<span class="num">3</span>, <span class="num">4</span>]);</code></pre>
+  </div>
+
+  <h2>4. Kiểm soát toàn diện cơ chế ép kiểu với <code>Symbol.toPrimitive</code></h2>
+  <p>Từ ECMAScript 2015 (ES6), bạn có thể hoàn toàn kiểm soát cách một đối tượng bị ép kiểu bằng cách định nghĩa phương thức <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol/toPrimitive" target="_blank">Symbol.toPrimitive</a>. Phương thức này sẽ đè bẹp cả <code>valueOf</code> và <code>toString</code>:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript — Tùy biến hành vi ép kiểu</span>
+<pre><code><span class="kw">const</span> product = {
+  name: <span class="str">"Bàn phím cơ"</span>,
+  price: <span class="num">1500000</span>,
+
+  [Symbol.toPrimitive](hint) {
+    <span class="kw">if</span> (hint === <span class="str">"number"</span>) {
+      <span class="cmt">// Gọi khi dùng trong ngữ cảnh toán học (+product, product - 500k)</span>
+      <span class="kw">return</span> <span class="kw">this</span>.price;
+    }
+    <span class="kw">if</span> (hint === <span class="str">"string"</span>) {
+      <span class="cmt">// Gọi khi dùng String(product) hoặc template literal `${product}`</span>
+      <span class="kw">return</span> `${<span class="kw">this</span>.name} (${<span class="kw">this</span>.price} VNĐ)`;
+    }
+    <span class="cmt">// hint === "default": Gọi khi dùng toán tử + hoặc so sánh ==</span>
+    <span class="kw">return</span> <span class="kw">this</span>.price;
+  }
+};
+
+console.<span class="fn">log</span>(+product);             <span class="cmt">// 1500000 (hint: "number")</span>
+console.<span class="fn">log</span>(product - <span class="num">200000</span>);     <span class="cmt">// 1300000 (hint: "number")</span>
+console.<span class="fn">log</span>(String(product));       <span class="cmt">// "Bàn phím cơ (1500000 VNĐ)" (hint: "string")</span>
+console.<span class="fn">log</span>(product + <span class="num">50000</span>);      <span class="cmt">// 1550000 (hint: "default")</span></code></pre>
+  </div>
+
+  <!-- GÓC PHỎNG VẤN THỰC TẾ -->
+  <div class="callout why">
+    <div class="ct">🎙️ Góc phỏng vấn Senior: Cách trả lời chuẩn Top-Down</div>
+    <p><strong>Câu hỏi 1:</strong> <em>"Giải thích kết quả của hai biểu thức <code>[] + {}</code> và <code>{} + []</code> trong JavaScript."</em></p>
+    <p>👉 <strong>Câu trả lời Senior (Top-Down):</strong><br>
+    <em>"Biểu thức <code>[] + {}</code> luôn trả về chuỗi <code>"[object Object]"</code> theo đúng thuật toán ToPrimitive của toán tử cộng: mảng rỗng ép thành chuỗi rỗng <code>""</code>, còn object rỗng ép thành chuỗi <code>"[object Object]"</code>, dẫn đến phép nối chuỗi.<br>
+    Tuy nhiên, với <code>{} + []</code>, kết quả phụ thuộc vào ngữ cảnh thực thi:
+    <ul>
+      <li>Nếu viết trực tiếp ở đầu dòng trong Developer Tools Console, <code>{}</code> được trình phân tích cú pháp (Parser) xem là một <strong>khối lệnh rỗng (Empty Block Code)</strong>, do đó chỉ còn lại biểu thức một ngôi <code>+[]</code>, cho ra kết quả số <code>0</code>.</li>
+      <li>Nếu bọc trong ngoặc đơn <code>({} + [])</code> hoặc gán vào biến <code>const res = {} + []</code>, <code>{}</code> được coi là Object Literal và kết quả vẫn là chuỗi <code>"[object Object]"</code>."</em></li>
+    </ul></p>
+    <hr style="border:none; border-top:1px dashed var(--border); margin:12px 0;">
+    <p><strong>Câu hỏi 2:</strong> <em>"Cơ chế Autoboxing có gây rò rỉ bộ nhớ hoặc ảnh hưởng hiệu năng không ?"</em></p>
+    <p>👉 <strong>Câu trả lời Senior:</strong><br>
+    <em>"Trong các JavaScript Engine hiện đại như V8, đối tượng wrapper tạm thời được cấp phát trên bộ nhớ Heap ngắn hạn (Young Generation / New Space) và bị Garbage Collector thu dọn cực kỳ nhanh chóng trong các chu kỳ Minor GC (Scavenger). Ngoài ra, V8 còn áp dụng kỹ thuật tối ưu hóa <strong>Escape Analysis</strong> để loại bỏ hoàn toàn việc cấp phát Heap nếu instance wrapper không bị rò rỉ ra phạm vi bên ngoài, do đó chi phí hiệu năng của Autoboxing là không đáng kể trong thực tế."</em></p>
+  </div>
+
+  <h2>5. Thực hành kiểm chứng trên máy thật (<code>practice/</code>)</h2>
+  <p>File <code>practice/type-coercion.test.js</code> đã sẵn sàng với 5 test case kiểm chứng toàn diện các quy tắc ép kiểu vừa học:</p>
+
+  <div class="code-block">
+    <span class="code-label">PowerShell — Chạy kiểm thử trên máy bạn</span>
+<pre><code>cd practice
+npm test</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">🎯 Kết quả kiểm chứng thực tế trên Node 22 / Vitest 4.1.11</div>
+<pre><code> ✓ practice/sanity.test.js (3 tests)
+ ✓ practice/memory-types.test.js (6 tests)
+ ✓ practice/type-coercion.test.js (5 tests)
+ Test Files  3 passed (3)
+      Tests  14 passed (14)</code></pre>
+  </div>
+
+  <!-- QUIZ TƯƠNG TÁC TỨC THÌ -->
+  <div class="quiz">
+    <h3>🧠 Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Biểu thức nào sau đây trả về giá trị số <code>0</code> trong JavaScript ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Number(undefined) trả về NaN vì undefined không có định nghĩa số học hợp lệ.">A. Number(undefined)</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Theo chuẩn ECMA-262, Number(null) được quy ước chuyển đổi thành số 0.">B. Number(null)</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Number('0px') trả về NaN vì chứa ký tự chữ cái không hợp lệ (Number() không bỏ qua chữ như parseInt).">C. Number("0px")</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>🧠 Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Biểu thức <code>[1, 2] + [3, 4]</code> sẽ cho kết quả là gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Toán tử + trong JavaScript không gộp các phần tử của mảng như hàm concat().">A. [1, 2, 3, 4]</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Cả 2 mảng đều bị ToPrimitive ép thành chuỗi: '1,2' và '3,4'. Toán tử + thực hiện nối chuỗi thành '1,23,4'.">B. "1,23,4"</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Phép toán không sinh ra lỗi NaN vì cả hai mảng đều chuyển đổi thành công sang chuỗi.">C. NaN</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">✅ Bạn vừa làm chủ trong Bài 02</div>
+    <ul class="checklist">
+      <li>Hiểu tường tận cơ chế <strong>Autoboxing</strong> (Wrapper Objects) khi primitive gọi phương thức.</li>
+      <li>Nắm trọn vẹn thuật toán <code>ToPrimitive</code> và thứ tự ưu tiên <code>Symbol.toPrimitive</code> &#8594; <code>valueOf</code> &#8594; <code>toString</code>.</li>
+      <li>Phân biệt rạch ròi quy tắc nối chuỗi của toán tử <code>+</code> so với phép ép số bắt buộc của <code>-</code>, <code>*</code>, <code>/</code>.</li>
+      <li>Tự tin giải mã các câu hỏi phỏng vấn trick về <code>[] + {}</code>, <code>Number(null)</code> vs <code>Number(undefined)</code>.</li>
+    </ul>
+  </div>
+
+  <!-- KẾT BÀI BẰNG CÂU HỎI TƯ DUY BẮC CẦU SANG BÀI 03 -->
+  <h2>6. Câu hỏi tư duy (Bắc cầu sang Bài 03)</h2>
+  <p>Quan sát 3 biểu thức so sánh kinh điển dưới đây và thử đoán kết quả:</p>
+  <div class="code-block">
+    <span class="code-label">JavaScript</span>
+<pre><code>console.<span class="fn">log</span>(<span class="kw">null</span> &gt; <span class="num">0</span>);   <span class="cmt">// -> false</span>
+console.<span class="fn">log</span>(<span class="kw">null</span> == <span class="num">0</span>);  <span class="cmt">// -> false</span>
+console.<span class="fn">log</span>(<span class="kw">null</span> &gt;= <span class="num">0</span>);  <span class="cmt">// -> true (QUÁI LẠ?!)</span></code></pre>
+  </div>
+  <p>👉 <em>Nếu <code>null &gt; 0</code> là <code>false</code> và <code>null == 0</code> cũng là <code>false</code>, tại sao <code>null &gt;= 0</code> (lớn hơn HOẶC bằng) lại trả về <code>true</code> ? Chuẩn ECMA-262 quy định thuật toán so sánh quan hệ (Relational Comparison) và so sánh bằng trừu tượng (Abstract Equality <code>==</code>) khác nhau như thế nào ?</em></p>
+
+  <!-- XEM TRƯỚC BÀI KẾ TIẾP -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 03 · So sánh bằng: <code>==</code> vs <code>===</code> vs <code>Object.is()</code> &amp; Bẫy NaN, null, undefined</div>
+    <p class="nd">Giải mã thuật toán IsLooselyEqual, phân biệt rạch ròi Strict Equality với Object.is, và làm chủ toàn bộ các trường hợp biên của giá trị đặc biệt.</p>
+  </div>
+
+  <!-- THANH ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0001-primitive-vs-reference-types.html">&#8592; Trước</a>
+    <a href="index.html">🏠 Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">💬 <strong>Tôi là người dạy của bạn.</strong> Hãy mở bài học trong trình duyệt, chạy test trong thư mục <code>practice</code> và thoải mái đặt câu hỏi phản biện cho tôi nhé!</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

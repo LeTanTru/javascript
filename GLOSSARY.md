@@ -60,3 +60,16 @@ _Avoid_: True pass-by-reference, pointer passing
 Thao tác sao chép đối tượng mà chỉ sao chép các thuộc tính ở tầng nông thứ nhất (cấp 1); các thuộc tính lồng nhau (nested objects/arrays) vẫn tiếp tục dùng chung con trỏ tham chiếu tới cùng ô nhớ cũ trên Heap.
 _Avoid_: Half clone, top copy
 
+**Type Coercion**:
+Cơ chế chuyển đổi tự động (ngầm định - Implicit) hoặc tường minh (Explicit) một giá trị từ kiểu dữ liệu này sang kiểu dữ liệu khác do JavaScript Engine thực thi theo đặc tả ECMA-262.
+_Avoid_: Type casting (trong statically-typed languages), type magic
+
+**ToPrimitive**:
+Thuật toán trừu tượng nội bộ trong ECMA-262 (§7.1.1) biến đổi một Object thành giá trị nguyên thủy (Primitive), ưu tiên `[Symbol.toPrimitive](hint)`, kế đến là `valueOf()` hoặc `toString()`.
+_Avoid_: Object flattening, primitive extractor
+
+**Autoboxing (Wrapper Objects)**:
+Cơ chế tạm thời đóng gói một giá trị Primitive (string, number, boolean) thành đối tượng wrapper tương ứng trên Memory Heap khi truy cập thuộc tính/phương thức, và lập tức hủy bỏ sau khi hoàn thành.
+_Avoid_: Object boxing, auto-instantiation
+
+

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 15 · Live-coding Polyfills: Tự viết Function.prototype.call, apply và bind</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 04 · Bài 15 (Hoàn tất Module 04)</span>
+  <h1>Bài 15 · Live-coding Polyfills: Tự viết <code>Function.prototype.call</code>, <code>apply</code> và <code>bind</code></h1>
+  <p class="subtitle">Giải phẫu cơ chế Explicit &amp; Hard Binding, làm chủ kỹ thuật Property Hijacking với Symbol, xử lý Primitive Boxing và thuật toán ghi đè toán tử new chuẩn ECMAScript Specification.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Tự tin viết tay polyfill hoàn chỉnh cho call, apply, bind trong mọi vòng phỏng vấn Live-coding, xử lý triệt để các góc khuất (null context, primitive boxing, arguments currying, new override).</p>
+
+  <!-- BẮC CẦU TỪ BÀI 14 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 14</div>
+    <p>Ở Bài 14, chúng ta đã thấu hiểu cơ chế Lexical <code>this</code> của Arrow Function và biết vì sao <code>call</code>, <code>apply</code>, <code>bind</code> hoàn toàn bất lực với nó. Nhưng đối với các Regular Functions thông thường, bộ ba phương thức này chính là công cụ quyền lực nhất để can thiệp ngữ cảnh thực thi.</p>
+    <p>Các công ty Big Tech và Product cao cấp thường xuyên yêu cầu ứng viên: <em>"Hãy tự viết lại Function.prototype.call, apply và bind mà không được dùng API có sẵn của JavaScript !"</em>. Bài học này sẽ trang bị cho bạn tư duy thiết kế polyfill từ con số 0.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Bản chất cốt lõi: Kỹ thuật Property Hijacking với Symbol</h2>
+  <p>Làm thế nào để một hàm <code>fn</code> thực thi với <code>this</code> là một đối tượng <code>context</code> hoàn toàn xa lạ mà không cần dùng hàm C++ gốc của Engine ?</p>
+  <p>Câu trả lời nằm ở <strong>Quy tắc 2 (Implicit Binding)</strong> chúng ta đã học ở Bài 13 :</p>
+  <p><em>"Nếu một hàm được gọi dưới dạng thuộc tính của một đối tượng (<code>obj.method()</code>), thì <code>this</code> bên trong hàm sẽ tự động trỏ tới đối tượng đứng trước dấu chấm !"</em></p>
+
+  <p>Vì vậy, giải thuật tự nhiên gồm 3 bước :</p>
+  <ol>
+    <li>Gán tạm hàm cần gọi làm một thuộc tính của <code>context</code>: <code>context.tempFn = this</code>.</li>
+    <li>Kích hoạt hàm thông qua đối tượng đó: <code>context.tempFn(...args)</code> &rarr; <code>this</code> tự động là <code>context</code> !</li>
+    <li>Xóa bỏ thuộc tính tạm để tránh làm biến đổi object gốc: <code>delete context.tempFn</code>.</li>
+  </ol>
+
+  <div class="callout warning">
+    <div class="ct">&#9888; Cạm bẫy trùng lặp Key &amp; Giải pháp Symbol</div>
+    <p>Nếu bạn đặt tên thuộc tính tạm là chuỗi thông thường như <code>context.__fn__ = this</code>, bạn có nguy cơ <strong>ghi đè lên dữ liệu đã có sẵn</strong> của người dùng nếu object của họ cũng có thuộc tính đó !</p>
+    <p>Giải pháp chuẩn mực của ECMAScript 6 : Sử dụng <code>Symbol('fnKey')</code> để tạo ra một định danh duy nhất tuyệt đối, không thể xung đột với bất kỳ key nào.</p>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Live-coding Polyfill: <code>Function.prototype.myCall</code> &amp; <code>myApply</code></h2>
+  <p>Hãy chú ý xử lý 2 trường hợp biên (Edge cases) quan trọng :</p>
+  <ul>
+    <li><strong>Null hoặc Undefined Context :</strong> Trong Non-strict mode, nếu truyền <code>null</code> hoặc <code>undefined</code>, <code>this</code> phải fallback về <code>globalThis</code> (window trên trình duyệt hoặc global trong Node.js).</li>
+    <li><strong>Primitive Context :</strong> Nếu người dùng truyền số <code>42</code> hay chuỗi <code>"hello"</code>, hàm phải bọc nó thành Object Wrapper thông qua <code>Object(context)</code> trước khi gán Symbol.</li>
+  </ul>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt myCall &amp; myApply</span>
+    <pre><code><span class="cmt">// Polyfill myCall: nhận danh sách đối số rời rạc (...args)</span>
+Function.prototype.<span class="fn">myCall</span> = <span class="kw">function</span> (context, ...args) {
+  <span class="cmt">// 1. Xử lý context: null/undefined -> globalThis; primitive -> Object()</span>
+  <span class="kw">if</span> (context === <span class="kw">null</span> || context === <span class="kw">undefined</span>) {
+    context = globalThis;
+  } <span class="kw">else</span> {
+    context = Object(context);
+  }
+
+  <span class="cmt">// 2. Dùng Symbol làm key duy nhất để tránh ô nhiễm context</span>
+  <span class="kw">const</span> fnKey = Symbol(<span class="str">'fnKey'</span>);
+  context[fnKey] = <span class="kw">this</span>; <span class="cmt">// 'this' chính là hàm đang gọi myCall</span>
+
+  <span class="cmt">// 3. Kích hoạt hàm qua Implicit Binding và hứng kết quả</span>
+  <span class="kw">const</span> result = context[fnKey](...args);
+
+  <span class="cmt">// 4. Dọn dẹp thuộc tính tạm</span>
+  <span class="kw">delete</span> context[fnKey];
+
+  <span class="kw">return</span> result;
+};
+
+<span class="cmt">// Polyfill myApply: nhận đối số thứ hai dưới dạng một mảng (argsArray)</span>
+Function.prototype.<span class="fn">myApply</span> = <span class="kw">function</span> (context, argsArray) {
+  <span class="kw">if</span> (context === <span class="kw">null</span> || context === <span class="kw">undefined</span>) {
+    context = globalThis;
+  } <span class="kw">else</span> {
+    context = Object(context);
+  }
+
+  <span class="kw">const</span> fnKey = Symbol(<span class="str">'fnKey'</span>);
+  context[fnKey] = <span class="kw">this</span>;
+
+  <span class="kw">let</span> result;
+  <span class="cmt">// Kiểm tra nếu có mảng đối số thì phân rã, nếu không thì gọi không tham số</span>
+  <span class="kw">if</span> (!argsArray || !Array.<span class="fn">isArray</span>(argsArray)) {
+    result = context[fnKey]();
+  } <span class="kw">else</span> {
+    result = context[fnKey](...argsArray);
+  }
+
+  <span class="kw">delete</span> context[fnKey];
+  <span class="kw">return</span> result;
+};</code></pre>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Live-coding Polyfill: <code>Function.prototype.myBind</code> (Đỉnh cao Interview)</h2>
+  <p>Viết polyfill cho <code>bind()</code> phức tạp hơn gấp nhiều lần vì nó mang 3 đặc tính :</p>
+  <ol>
+    <li><strong>Trả về một hàm mới (Closure) :</strong> Không kích hoạt hàm ngay mà đóng gói hàm và context vào một bao đóng.</li>
+    <li><strong>Partial Application (Currying) :</strong> Hỗ trợ gộp các đối số truyền trước lúc <code>bind()</code> với các đối số truyền sau khi hàm mới được gọi.</li>
+    <li><strong>Toán tử <code>new</code> ghi đè (The `new` Keyword Override) :</strong> Đây là tiêu chí phân biệt Junior với Senior ! Chuẩn ECMAScript quy định : Nếu hàm được trả về từ <code>bind()</code> được gọi cùng từ khóa <code>new</code>, thì <code>this</code> lúc này PHẢI là thực thể mới tạo ra, và đối tượng <code>context</code> đã truyền vào lúc bind phải bị <strong>bỏ qua hoàn toàn</strong> !</li>
+  </ol>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt myBind hoàn chỉnh chuẩn ECMAScript</span>
+    <pre><code>Function.prototype.<span class="fn">myBind</span> = <span class="kw">function</span> (context, ...bindArgs) {
+  <span class="kw">const</span> originalFn = <span class="kw">this</span>;
+  <span class="kw">if</span> (<span class="kw">typeof</span> originalFn !== <span class="str">'function'</span>) {
+    <span class="kw">throw new</span> TypeError(<span class="str">'myBind phải được gọi trên một Function'</span>);
+  }
+
+  <span class="kw">function</span> <span class="fn">boundFn</span>(...callArgs) {
+    <span class="cmt">// KIỂM TRA ĐIỀU KIỆN NEW:</span>
+    <span class="cmt">// Nếu boundFn được gọi bằng `new boundFn()`, thì trong hàm này:</span>
+    <span class="cmt">// 'this' là một instance kế thừa từ boundFn -> (this instanceof boundFn === true)</span>
+    <span class="kw">const</span> isNewInstance = <span class="kw">this instanceof</span> boundFn;
+
+    <span class="cmt">// Nếu gọi với new -> context là chính 'this' mới; ngược lại dùng context đã bind</span>
+    <span class="kw">const</span> targetContext = isNewInstance ? <span class="kw">this</span> : (context ?? globalThis);
+
+    <span class="cmt">// Nối đối số currying: bindArgs + callArgs</span>
+    <span class="kw">return</span> originalFn.<span class="fn">apply</span>(targetContext, [...bindArgs, ...callArgs]);
+  }
+
+  <span class="cmt">// Giữ nguyên chuỗi Prototype để các instance tạo từ new boundFn() có đầy đủ method</span>
+  <span class="kw">if</span> (originalFn.prototype) {
+    boundFn.prototype = Object.<span class="fn">create</span>(originalFn.prototype);
+  }
+
+  <span class="kw">return</span> boundFn;
+};</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Tại sao cần Object.create(originalFn.prototype) ?</div>
+    <p>Nếu bạn gán trực tiếp <code>boundFn.prototype = originalFn.prototype</code>, bất kỳ sửa đổi nào trên <code>boundFn.prototype</code> sẽ làm biến dạng luôn cả <code>originalFn.prototype</code> ! Dùng <code>Object.create()</code> tạo ra một prototype trung gian độc lập nhưng vẫn duy trì chuỗi Prototype Chain hoàn hảo.</p>
+  </div>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Bảng tổng kết so sánh 3 phương thức</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Phương thức</th>
+          <th>Thời điểm thực thi</th>
+          <th>Cách truyền tham số</th>
+          <th>Giá trị trả về</th>
+          <th>Ảnh hưởng của `new`</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>call(context, ...args)</code></td>
+          <td>Thực thi ngay lập tức</td>
+          <td>Liệt kê đối số rời rạc</td>
+          <td>Kết quả của hàm</td>
+          <td>Không áp dụng</td>
+        </tr>
+        <tr>
+          <td><code>apply(context, [args])</code></td>
+          <td>Thực thi ngay lập tức</td>
+          <td>Mảng đối số (hoặc array-like)</td>
+          <td>Kết quả của hàm</td>
+          <td>Không áp dụng</td>
+        </tr>
+        <tr>
+          <td><code>bind(context, ...args)</code></td>
+          <td><strong>Không</strong> thực thi ngay</td>
+          <td>Truyền trước một phần (Currying)</td>
+          <td><strong>Hàm mới (Bound Function)</strong></td>
+          <td><strong>Ghi đè context đã bind</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Vì sao kỹ thuật Property Hijacking trong polyfill call/apply nên dùng Symbol thay vì chuỗi như '__temp_fn__' ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Tốc độ thực thi của Symbol không nhanh hơn đáng kể so với String.">A. Vì Symbol chạy nhanh hơn chuỗi thông thường trong V8 engine</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Symbol đảm bảo giá trị key là duy nhất tuyệt đối (guaranteed unique property key), loại bỏ 100% rủi ro vô tình ghi đè lên thuộc tính có sẵn của context object.">B. Vì Symbol đảm bảo key là duy nhất, không bao giờ xung đột hay ghi đè thuộc tính có sẵn của object</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Cả hai đều có thể bị xóa bằng delete.">C. Vì thuộc tính kiểu String không thể xóa được bằng lệnh delete</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Xét đoạn code sau :<br>
+    <code>function User(name) { this.name = name; }<br>
+    const BoundUser = User.bind({ name: 'Default' });<br>
+    const u = new BoundUser('Kaka');<br>
+    console.log(u.name);</code><br>
+    Kết quả in ra console là gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Theo thứ tự ưu tiên của 4 quy tắc this, New Binding ghi đè Hard Binding (bind).">A. "Default"</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Theo chuẩn ECMAScript, toán tử new có độ ưu tiên cao nhất, nó ghi đè ngữ cảnh đã bind trước đó. 'this' trỏ vào đối tượng mới tạo ra và u.name được gán là 'Kaka'.">B. "Kaka"</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Không có lỗi TypeError nào xảy ra ở đây.">C. TypeError: BoundUser is not a constructor</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng trước khi kết thúc Module 04</h2>
+  <div class="checklist">
+    <div>&#9989; Tự tin live-coding <code>myCall</code> và <code>myApply</code> bằng kỹ thuật Property Hijacking với <code>Symbol</code>.</div>
+    <div>&#9989; Xử lý thành thạo các edge-cases: <code>null</code>/<code>undefined</code> context và <code>Object(primitive)</code> boxing.</div>
+    <div>&#9989; Cài đặt hoàn chỉnh <code>myBind</code> hỗ trợ Currying đối số và toán tử <code>new</code> ghi đè.</div>
+    <div>&#9989; Nắm chắc chuỗi prototype trung gian thông qua <code>Object.create()</code>.</div>
+    <div>&#9989; Toàn bộ 102 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#127881; Chúc mừng bạn đã hoàn thành trọn vẹn Module 04 !</div>
+    <p>Bạn đã làm chủ hoàn toàn các cơ chế phức tạp nhất của Functions &amp; This trong JavaScript: từ 4 quy tắc cơ bản, Lexical this của Arrow Function, cho tới tự tay viết polyfills cấp độ V8 Engine.</p>
+    <p>Hãy xem qua trang <strong>Cheatsheet &amp; Cheat-sheet tổng kết Module 04</strong> để ôn tập toàn diện trước khi bước vào <strong>Module 05: Asynchronous JavaScript, Event Loop &amp; Task Queues</strong> !</p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Tổng kết &amp; Tra cứu nhanh Module 04</div>
+    <div class="nt">Reference Guide · Module 04: This, Arrow Functions &amp; Function Internals</div>
+    <p class="nd">Bảng ma trận tra cứu 4 quy tắc this, ma trận so sánh Regular vs Arrow Function và bộ mã nguồn 3 Polyfills mẫu chuẩn Senior.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0014-arrow-functions.html">&#8592; Bài 14</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="../reference/04-this-function-internals.html">Cheatsheet Module 04 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test polyfill và hỏi tôi bất kỳ thắc mắc nào !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

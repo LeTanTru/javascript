@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 04 · This, Arrow Functions &amp; Function Internals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .cs-badge { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #232838; color: var(--text-dim); margin-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it, .quiz { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 04 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 04 : This, Arrow Functions &amp; Function Internals</h1>
+  <p class="subtitle">Bản đồ tư duy tóm lược cô đọng toàn bộ kiến thức chuyên sâu từ Bài 13 đến Bài 15 &mdash; Sẵn sàng cho mọi câu hỏi phỏng vấn hóc búa về context, Lexical scope và live-coding polyfills.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm trọn 4 trục cốt lõi (4 Quy tắc xác định this, Arrow Functions &amp; Lexical this, Ma trận so sánh Function types, Bộ 3 Polyfills chuẩn Senior).</p>
+
+  <!-- TRỤC 1: 4 QUY TẮC XÁC ĐỊNH THIS -->
+  <h2>1. Trục 1: 4 Quy tắc xác định `this` &amp; Thứ tự ưu tiên (Bài 13)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Thứ tự ưu tiên</th>
+        <th>Quy tắc</th>
+        <th>Cú pháp gọi hàm</th>
+        <th>Giá trị của `this`</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1 (Cao nhất)</strong></td>
+        <td><strong>New Binding</strong></td>
+        <td><code>new MyConstructor()</code></td>
+        <td>Đối tượng instance mới được tạo và liên kết prototype chain.</td>
+      </tr>
+      <tr>
+        <td><strong>2</strong></td>
+        <td><strong>Explicit / Hard Binding</strong></td>
+        <td><code>fn.call(ctx)</code>, <code>fn.apply(ctx)</code>, <code>fn.bind(ctx)</code></td>
+        <td>Chính xác đối tượng <code>ctx</code> được chỉ định. Lưu ý: <code>new</code> ghi đè được <code>bind</code> !</td>
+      </tr>
+      <tr>
+        <td><strong>3</strong></td>
+        <td><strong>Implicit Binding</strong></td>
+        <td><code>contextObj.method()</code></td>
+        <td>Đối tượng nằm ngay trước dấu chấm tại thời điểm gọi (call-site). Nguy cơ: <em>Implicit Loss</em> khi truyền callback.</td>
+      </tr>
+      <tr>
+        <td><strong>4 (Thấp nhất)</strong></td>
+        <td><strong>Default Binding</strong></td>
+        <td><code>standaloneFunction()</code></td>
+        <td><strong>Non-strict mode:</strong> <code>window</code> (browser) / <code>global</code> (Node.js).<br><strong>Strict mode:</strong> <code>undefined</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: ARROW FUNCTIONS & LEXICAL THIS -->
+  <h2>2. Trục 2: Arrow Functions &amp; Lexical `this` (Bài 14)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Đặc tính</th>
+        <th>Cơ chế kỹ thuật</th>
+        <th>Hệ quả thực tế</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Lexical <code>this</code></strong></td>
+        <td>Không có internal slot <code>this</code>. Tra cứu <code>this</code> như một biến thông thường qua Scope Chain từ môi trường ngoài.</td>
+        <td>Miễn nhiễm tuyệt đối với <code>call()</code>, <code>apply()</code>, <code>bind()</code>. Không bao giờ bị mất context trong async callbacks.</td>
+      </tr>
+      <tr>
+        <td><strong>Không có <code>arguments</code></strong></td>
+        <td>Engine không khởi tạo Arguments Object cho Arrow Function Execution Context.</td>
+        <td>Nếu truy cập <code>arguments</code> sẽ lấy nhầm của hàm cha bên ngoài. Thay thế bằng <code>...rest</code> parameters.</td>
+      </tr>
+      <tr>
+        <td><strong>Không có <code>prototype</code> &amp; <code>new</code></strong></td>
+        <td>Không sở hữu internal method <code>[[Construct]]</code>, không được Engine cấp phát thuộc tính <code>prototype</code> (bằng <code>undefined</code>).</td>
+        <td>Tiết kiệm bộ nhớ RAM đáng kể; ném <code>TypeError: ... is not a constructor</code> nếu gọi với từ khóa <code>new</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 3: MA TRẬN SO SÁNH FUNCTION TYPES -->
+  <h2>3. Trục 3: Ma trận so sánh Regular Function vs Arrow Function</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Tiêu chí</th>
+          <th>Regular Function (Declaration / Expression)</th>
+          <th>Arrow Function (<code>() =&gt; {}</code>)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Ràng buộc `this`</strong></td>
+          <td>Động (Dynamic) theo call-site tại runtime</td>
+          <td>Tĩnh (Lexical) theo định nghĩa từ vựng</td>
+        </tr>
+        <tr>
+          <td><strong>Biến `arguments`</strong></td>
+          <td>Có sẵn Arguments Array-like</td>
+          <td>Không có (dùng <code>...rest</code>)</td>
+        </tr>
+        <tr>
+          <td><strong>Gọi với toán tử `new`</strong></td>
+          <td>Hợp lệ (nếu không phải method shorthand)</td>
+          <td>Bị cấm (TypeError)</td>
+        </tr>
+        <tr>
+          <td><strong>Thuộc tính `prototype`</strong></td>
+          <td>Có (mặc định là <code>{ constructor: fn }</code>)</td>
+          <td><code>undefined</code></td>
+        </tr>
+        <tr>
+          <td><strong>Dùng làm Object Method</strong></td>
+          <td><strong>Khuyên dùng</strong> (truy cập được <code>this.prop</code>)</td>
+          <td><strong>Bẫy chết người</strong> (this trỏ ra Global)</td>
+        </tr>
+        <tr>
+          <td><strong>Dùng trong Async Callbacks</strong></td>
+          <td>Dễ bị Implicit Loss (phải bind hoặc self=this)</td>
+          <td><strong>Hoàn hảo</strong> (tự bảo toàn context cha)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- TRỤC 4: BỘ 3 POLYFILLS CHUẨN SENIOR -->
+  <h2>4. Trục 4: Bộ 3 Polyfills chuẩn Senior (Bài 15)</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cẩm nang Polyfill myCall, myApply, myBind</span>
+    <pre><code><span class="cmt">// 1. Polyfill myCall</span>
+Function.prototype.<span class="fn">myCall</span> = <span class="kw">function</span> (context, ...args) {
+  <span class="kw">if</span> (context === <span class="kw">null</span> || context === <span class="kw">undefined</span>) context = globalThis;
+  <span class="kw">else</span> context = Object(context);
+
+  <span class="kw">const</span> fnKey = Symbol(<span class="str">'fnKey'</span>); <span class="cmt">// Property Hijacking</span>
+  context[fnKey] = <span class="kw">this</span>;
+  <span class="kw">const</span> result = context[fnKey](...args);
+  <span class="kw">delete</span> context[fnKey];
+  <span class="kw">return</span> result;
+};
+
+<span class="cmt">// 2. Polyfill myApply</span>
+Function.prototype.<span class="fn">myApply</span> = <span class="kw">function</span> (context, argsArray) {
+  <span class="kw">if</span> (context === <span class="kw">null</span> || context === <span class="kw">undefined</span>) context = globalThis;
+  <span class="kw">else</span> context = Object(context);
+
+  <span class="kw">const</span> fnKey = Symbol(<span class="str">'fnKey'</span>);
+  context[fnKey] = <span class="kw">this</span>;
+  <span class="kw">const</span> result = (!argsArray || !Array.<span class="fn">isArray</span>(argsArray)) ? context[fnKey]() : context[fnKey](...argsArray);
+  <span class="kw">delete</span> context[fnKey];
+  <span class="kw">return</span> result;
+};
+
+<span class="cmt">// 3. Polyfill myBind (Hỗ trợ Currying & new keyword override)</span>
+Function.prototype.<span class="fn">myBind</span> = <span class="kw">function</span> (context, ...bindArgs) {
+  <span class="kw">const</span> originalFn = <span class="kw">this</span>;
+  <span class="kw">if</span> (<span class="kw">typeof</span> originalFn !== <span class="str">'function'</span>) <span class="kw">throw new</span> TypeError(<span class="str">'Invalid callable'</span>);
+
+  <span class="kw">function</span> <span class="fn">boundFn</span>(...callArgs) {
+    <span class="kw">const</span> isNewInstance = <span class="kw">this instanceof</span> boundFn;
+    <span class="kw">const</span> targetContext = isNewInstance ? <span class="kw">this</span> : (context ?? globalThis);
+    <span class="kw">return</span> originalFn.<span class="fn">apply</span>(targetContext, [...bindArgs, ...callArgs]);
+  }
+
+  <span class="kw">if</span> (originalFn.prototype) boundFn.prototype = Object.<span class="fn">create</span>(originalFn.prototype);
+  <span class="kw">return</span> boundFn;
+};</code></pre>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0015-call-apply-bind-polyfills.html">&#8592; Bài 15</a>
+    <a href="../lessons/index.html">&#127968; Mục lục khóa học</a>
+    <a href="../lessons/0016-event-loop-callstack.html" class="disabled">Module 05 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh:</strong> Hãy lưu trang này để ôn luyện trước các buổi phỏng vấn kỹ thuật hoặc in ra (Ctrl + P) để ôn tập offline bất kỳ lúc nào !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

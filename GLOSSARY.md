@@ -220,6 +220,19 @@ _Avoid_: Static this, scope this
 Cú pháp trong ES6 cho phép gom toàn bộ các tham số còn lại truyền vào hàm thành một mảng JavaScript thực sự (`Array.isArray(args) === true`), thay thế đối tượng giả mảng lỗi thời `arguments` của ES5.
 _Avoid_: Arguments array, spread parameter
 
+**Polyfill**:
+Đoạn mã nguồn (thường bằng JavaScript thuần) được dùng để cung cấp các tính năng hoặc API mới của chuẩn ECMAScript trên các trình duyệt hoặc môi trường runtime cũ chưa hỗ trợ native.
+_Avoid_: Shim, monkey patch, library hack
+
+**Property Hijacking**:
+Kỹ thuật mượn cơ chế Implicit Binding để cài đặt Explicit Binding trong polyfill `call`/`apply`: gán tạm hàm làm method của đối tượng context bằng `Symbol('fnKey')`, kích hoạt hàm đó qua cú pháp `context[fnKey]()`, sau đó dọn dẹp bằng `delete`.
+_Avoid_: Method hijacking, object monkey-patch
+
+**Partial Application**:
+Kỹ thuật truyền trước một tập hợp con các tham số vào một hàm và trả về một hàm mới (Bound Function) chờ nhận nốt các tham số còn lại khi được thực thi, được hiện thực hóa qua `Function.prototype.bind`.
+_Avoid_: Partial call, parameter caching
+
+
 
 
 

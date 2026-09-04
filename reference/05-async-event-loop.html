@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 05 · Async JavaScript, Event Loop &amp; Concurrency Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 05 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 05 : Async JavaScript, Event Loop &amp; Concurrency Control</h1>
+  <p class="subtitle">Bản đồ tư duy cô đọng toàn bộ kiến thức bất đồng bộ từ Bài 16 đến Bài 21 &mdash; Sẵn sàng trả lời mọi câu hỏi phỏng vấn Senior về Event Loop, Promise và async patterns.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm trọn 5 trụ cột (Event Loop, Promise State Machine, 5 Combinators, AbortController, Concurrency Limiter).</p>
+
+  <!-- TRỤC 1: EVENT LOOP -->
+  <h2>1. Giải thuật 1 Tick Event Loop (Chuẩn HTML Living Standard)</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Bước</th><th>Hành động</th><th>Ghi chú</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1</strong></td>
+        <td>Chạy Call Stack (mã đồng bộ)</td>
+        <td><code>console.log</code>, function calls, expressions</td>
+      </tr>
+      <tr>
+        <td><strong>2</strong></td>
+        <td>Vét cạn 100% Microtask Queue (drain)</td>
+        <td>Promise.then, queueMicrotask, MutationObserver. <strong>Kể cả microtask lồng nhau !</strong></td>
+      </tr>
+      <tr>
+        <td><strong>3</strong></td>
+        <td>Rendering Pipeline (Browser only)</td>
+        <td>rAF callbacks → Recalculate Styles → Layout → Paint</td>
+      </tr>
+      <tr>
+        <td><strong>4</strong></td>
+        <td>Bốc đúng 1 Macrotask</td>
+        <td>setTimeout, setInterval, I/O events. Sau đó quay lại bước 2.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: PROMISE STATE MACHINE -->
+  <h2>2. Promise State Machine &amp; .then Chaining</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Trạng thái</th><th>Chuyển sang</th><th>Quy tắc then chaining</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>pending</code></td>
+        <td><code>fulfilled</code> hoặc <code>rejected</code> (1 lần, không đảo ngược)</td>
+        <td>.then() luôn trả về Promise mới. Lỗi nhảy qua các .then(), chỉ dừng tại .catch() đầu tiên.</td>
+      </tr>
+      <tr>
+        <td><code>fulfilled</code></td>
+        <td>Settled — không thể chuyển</td>
+        <td>.finally() trong suốt: chạy nhưng không biến đổi giá trị truyền qua.</td>
+      </tr>
+      <tr>
+        <td><code>rejected</code></td>
+        <td>Settled — không thể chuyển</td>
+        <td>Sau khi .catch() xử lý → chuỗi trở lại fulfilled.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 3: 5 COMBINATORS -->
+  <h2>3. Ma trận 5 Promise Combinators</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Combinator</th><th>Resolve khi</th><th>Reject khi</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Promise.all</code></td><td>TẤT CẢ fulfilled</td><td>BẤT KỲ 1 rejected → reject ngay</td></tr>
+      <tr><td><code>Promise.allSettled</code></td><td>TẤT CẢ settled (kể cả rejected)</td><td><em>Không bao giờ reject</em></td></tr>
+      <tr><td><code>Promise.race</code></td><td>Promise settle ĐẦU TIÊN (bất kể fulfilled/rejected)</td><td>Same — race winner decides</td></tr>
+      <tr><td><code>Promise.any</code></td><td>BẤT KỲ 1 fulfilled</td><td>TẤT CẢ rejected → AggregateError</td></tr>
+      <tr><td><code>Promise.withResolvers</code></td><td colspan="2">Trả về { promise, resolve, reject } — Deferred Pattern ES2024</td></tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 4: ABORT CONTROLLER -->
+  <h2>4. AbortController Pattern (Cancel-on-Supersede)</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cẩm nang Cancel-on-Supersede</span>
+    <pre><code><span class="kw">let</span> activeController = <span class="kw">null</span>;
+
+<span class="kw">async function</span> <span class="fn">search</span>(query) {
+  activeController?.<span class="fn">abort</span>(<span class="str">'superseded'</span>); <span class="cmt">// Hủy request cũ</span>
+  activeController = <span class="kw">new</span> AbortController();
+
+  <span class="kw">try</span> {
+    <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`/api?q=<span class="kw">${query}</span>`</span>, { signal: activeController.signal });
+    <span class="fn">renderResults</span>(<span class="kw">await</span> res.<span class="fn">json</span>());
+  } <span class="kw">catch</span> (e) {
+    <span class="kw">if</span> (e.name !== <span class="str">'AbortError'</span>) <span class="kw">throw</span> e; <span class="cmt">// Chỉ bỏ qua AbortError</span>
+  }
+}
+
+<span class="cmt">// ES2022+: signal tự timeout</span>
+<span class="fn">fetch</span>(url, { signal: AbortSignal.<span class="fn">timeout</span>(<span class="num">5000</span>) });</code></pre>
+  </div>
+
+  <!-- TRỤC 5: CONCURRENCY LIMITER -->
+  <h2>5. Concurrency Limiter (p-limit Pattern)</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cẩm nang Concurrency Limiter + asyncPool</span>
+    <pre><code><span class="kw">function</span> <span class="fn">createConcurrencyLimiter</span>(concurrency) {
+  <span class="kw">const</span> queue = []; <span class="kw">let</span> activeCount = <span class="num">0</span>;
+
+  <span class="kw">const</span> <span class="fn">next</span> = () => {
+    <span class="kw">if</span> (!queue.length || activeCount >= concurrency) <span class="kw">return</span>;
+    activeCount++;
+    <span class="kw">const</span> { taskFactory, resolve, reject } = queue.<span class="fn">shift</span>();
+    Promise.<span class="fn">resolve</span>(<span class="fn">taskFactory</span>()).<span class="fn">then</span>(resolve, reject).<span class="fn">finally</span>(() => {
+      activeCount--; <span class="fn">next</span>();
+    });
+  };
+
+  <span class="kw">return</span> (taskFactory) => <span class="kw">new</span> Promise((resolve, reject) => {
+    queue.<span class="fn">push</span>({ taskFactory, resolve, reject }); <span class="fn">next</span>();
+  });
+}
+
+<span class="cmt">// asyncPool: Batch processing với concurrency control</span>
+<span class="kw">const</span> <span class="fn">asyncPool</span> = (items, n, fn) => {
+  <span class="kw">const</span> limit = <span class="fn">createConcurrencyLimiter</span>(n);
+  <span class="kw">return</span> Promise.<span class="fn">all</span>(items.<span class="fn">map</span>((item) => limit(() => <span class="fn">fn</span>(item))));
+};</code></pre>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0021-concurrency-limiter.html">&#8592; Bài 21</a>
+    <a href="../lessons/index.html">&#127968; Mục lục khóa học</a>
+    <a href="../lessons/0022-generators-async.html" class="disabled">Module 06 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh:</strong> Hãy lưu trang này để ôn luyện trước các buổi phỏng vấn kỹ thuật hoặc in ra (Ctrl + P) để ôn tập offline bất kỳ lúc nào !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

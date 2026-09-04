@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 21 · Live-coding: Cài đặt Async Pool / Concurrency Limiter (p-limit / Task Queue)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 05 · Bài 21 (Hoàn tất Module 05)</span>
+  <h1>Bài 21 · Live-coding: Cài đặt Async Pool / Concurrency Limiter (<code>p-limit</code> / Task Queue)</h1>
+  <p class="subtitle">Xây dựng từ đầu một bộ điều tiết tác vụ bất đồng bộ giới hạn N tasks đồng thời, tích hợp Queue data structure và Closure để triển khai cơ chế sliding window tự động — chuẩn bị cho mọi bài toán rate-limiting và batch processing trong production.</p>
+  <p class="meta-line">&#9203; ~22 phút &middot; &#127919; Mục tiêu: Tự tay cài đặt Concurrency Limiter từ đầu (không dùng thư viện), hiểu cơ chế Sliding Window Queue, xây dựng utility hàm asyncPool và áp dụng vào các tình huống batch API calls thực tế.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 20 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 20</div>
+    <p>Ở Bài 20, chúng ta học cách hủy bỏ từng request riêng lẻ. Nhưng trong thực tế sản xuất (production), thách thức còn lớn hơn : bạn có danh sách 1000 items cần gọi API, nếu gửi tất cả 1000 request cùng lúc sẽ làm server quá tải và trình duyệt cạn kiệt tài nguyên.</p>
+    <p>Giải pháp chuẩn mực là <strong>Concurrency Limiter</strong> &mdash; cùng tư tưởng với thư viện <code>p-limit</code> nổi tiếng nhất trong hệ sinh thái Node.js. Bài học này sẽ giúp bạn tự tay cài đặt hoàn chỉnh từ gốc rễ !</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Bài toán: Rate Limiting trong Async Workflows</h2>
+  <p>Giả sử bạn cần xử lý 100 hình ảnh bằng API: nếu gọi <code>Promise.all(images.map(upload))</code>, bạn khởi tạo 100 request ngay lập tức. Hậu quả :</p>
+  <ul>
+    <li>Server chịu 100 concurrent requests &rarr; quá tải, timeout, lỗi 503.</li>
+    <li>Browser mở 100 TCP connections cùng lúc &rarr; cạn kiệt bộ nhớ, crash tab.</li>
+    <li>Không thể kiểm soát thứ tự xử lý hay biết khi nào pool còn slot trống.</li>
+  </ul>
+  <p>Yêu cầu lý tưởng : <strong>Luôn giữ tối đa N requests đang chạy song song. Khi 1 request hoàn thành, tự động kích hoạt request tiếp theo trong hàng đợi (Sliding Window).</strong></p>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Kiến trúc Concurrency Limiter: Queue + Closure + Callback Chain</h2>
+  <p>Giải thuật cốt lõi gồm 3 thành phần :</p>
+  <ol>
+    <li><strong>Queue (Hàng đợi FIFO) :</strong> Lưu trữ các task chưa được chạy, mỗi phần tử gồm <code>taskFactory</code> (hàm tạo Promise), <code>resolve</code> và <code>reject</code> của Promise bên ngoài.</li>
+    <li><strong>Active Counter :</strong> Biến <code>activeCount</code> đếm số tasks đang thực thi. Bất biến quan trọng : <code>activeCount &le; concurrency</code> mọi lúc.</li>
+    <li><strong>next() Trigger :</strong> Hàm kích hoạt task kế tiếp, được gọi đệ quy trong <code>.finally()</code> của mỗi task hoàn thành (Sliding Window).</li>
+  </ol>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Concurrency Limiter hoàn chỉnh (chuẩn p-limit)</span>
+    <pre><code><span class="kw">function</span> <span class="fn">createConcurrencyLimiter</span>(concurrency) {
+  <span class="kw">const</span> queue = [];      <span class="cmt">// Hàng đợi tasks chờ xử lý</span>
+  <span class="kw">let</span> activeCount = <span class="num">0</span>;  <span class="cmt">// Reference Counter: số tasks đang chạy</span>
+
+  <span class="kw">const</span> <span class="fn">next</span> = () => {
+    <span class="kw">if</span> (queue.length === <span class="num">0</span> || activeCount >= concurrency) <span class="kw">return</span>;
+
+    activeCount++;
+    <span class="kw">const</span> { taskFactory, resolve, reject } = queue.<span class="fn">shift</span>();
+
+    Promise.<span class="fn">resolve</span>(<span class="fn">taskFactory</span>())
+      .<span class="fn">then</span>(resolve, reject)
+      .<span class="fn">finally</span>(() => {
+        activeCount--;  <span class="cmt">// Giải phóng slot</span>
+        <span class="fn">next</span>();       <span class="cmt">// ← Sliding Window: bốc task tiếp theo</span>
+      });
+  };
+
+  <span class="kw">return function</span> <span class="fn">limit</span>(taskFactory) {
+    <span class="kw">return new</span> Promise((resolve, reject) => {
+      queue.<span class="fn">push</span>({ taskFactory, resolve, reject }); <span class="cmt">// Xếp hàng</span>
+      <span class="fn">next</span>(); <span class="cmt">// Thử kích hoạt ngay (nếu còn slot)</span>
+    });
+  };
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Ứng dụng thực tế: Hàm asyncPool</h2>
+  <p>Xây dựng helper function tương tự <code>p-map</code> để xử lý danh sách với concurrency control :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; asyncPool: Batch API calls với concurrency control</span>
+    <pre><code><span class="kw">async function</span> <span class="fn">asyncPool</span>(items, concurrency, mapper) {
+  <span class="kw">const</span> limit = <span class="fn">createConcurrencyLimiter</span>(concurrency);
+  <span class="kw">return</span> Promise.<span class="fn">all</span>(
+    items.<span class="fn">map</span>((item) => limit(() => <span class="fn">mapper</span>(item)))
+  );
+}
+
+<span class="cmt">// Sử dụng: Upload tối đa 3 file đồng thời</span>
+<span class="kw">const</span> files = [file1, file2, ..., file100];
+<span class="kw">const</span> results = <span class="kw">await</span> <span class="fn">asyncPool</span>(files, <span class="num">3</span>, <span class="kw">async</span> (file) => {
+  <span class="kw">const</span> url = <span class="kw">await</span> <span class="fn">uploadToS3</span>(file);
+  <span class="kw">return</span> url;
+});
+<span class="cmt">// results là mảng 100 URLs theo đúng thứ tự ban đầu</span></code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Bí mật của Sliding Window</div>
+    <p>Điểm then chốt là gọi <code>next()</code> trong <code>.finally()</code> (không phải <code>.then()</code>) để đảm bảo slot luôn được giải phóng và task mới được bốc bất kể task cũ thành công hay thất bại. Điều này ngăn chặn tình trạng pool bị "kẹt" do task lỗi.</p>
+  </div>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Trong Concurrency Limiter, tại sao phải gọi next() trong .finally() thay vì chỉ trong .then() ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! finally không thực sự liên quan đến hiệu năng so với then.">A. Vì .finally() chạy nhanh hơn .then() một chút</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Nếu chỉ gọi next() trong .then(), khi một task bị rejected, slot sẽ không được giải phóng và activeCount không giảm. Pool sẽ bị kẹt vĩnh viễn với activeCount không bao giờ trở về 0.">B. Vì nếu task bị rejected, .then() sẽ không chạy và activeCount không bao giờ giảm, làm pool bị kẹt</button>
+    <button class="opt" data-correct="false" data-explain="Sai! .finally() không có ưu tiên thứ tự đặc biệt so với .then() trong Microtask Queue.">C. Vì .finally() được xử lý trước .then() trong Microtask Queue</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Bạn có danh sách 500 users cần gọi API lấy profile. Cách nào tối ưu nhất ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Promise.all với 500 requests gây quá tải server và nguy cơ crash tab trình duyệt do quá nhiều TCP connections.">A. Promise.all(users.map(getProfile)) — chạy tất cả 500 request đồng thời</button>
+    <button class="opt" data-correct="false" data-explain="Sai! for...of await tuần tự sẽ mất 500 × thời gian mỗi request, cực kỳ chậm và không tận dụng được khả năng song song.">B. for...of với await tuần tự từng request một</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! asyncPool với concurrency 10-20 là lựa chọn vàng: đủ song song để nhanh, không quá nhiều để server bị quá tải. Đây là pattern chuẩn trong batch processing production.">C. asyncPool(users, 10, getProfile) — giới hạn tối đa 10 requests đồng thời (sliding window)</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>5. Checklist tự kiểm chứng — Hoàn tất Module 05</h2>
+  <div class="checklist">
+    <div>&#9989; Hiểu kiến trúc Queue + Reference Counter + Sliding Window của Concurrency Limiter.</div>
+    <div>&#9989; Tự tay cài đặt được hàm <code>createConcurrencyLimiter</code> và <code>asyncPool</code> từ đầu.</div>
+    <div>&#9989; Giải thích vì sao phải gọi <code>next()</code> trong <code>.finally()</code> để đảm bảo isolation lỗi.</div>
+    <div>&#9989; Biết áp dụng concurrency limiter cho các bài toán batch processing, file upload và rate limiting.</div>
+    <div>&#9989; Toàn bộ 139 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CHÚC MỪNG HOÀN THÀNH MODULE 05 -->
+  <div class="callout bridge">
+    <div class="ct">&#127881; Chúc mừng hoàn thành trọn vẹn Module 05 !</div>
+    <p>Bạn đã làm chủ trọn bộ kiến thức Bất đồng bộ JavaScript từ gốc rễ : Event Loop Architecture, Microtask / Macrotask ordering, Promise State Machine, 5 Combinators, AbortController và Concurrency Limiter.</p>
+    <p>Hãy xem trang <strong>Reference Guide Module 05</strong> để ôn tập toàn diện trước khi bước vào <strong>Module 06: Functional Programming &amp; Utility Polyfills</strong> !</p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Tổng kết &amp; Tra cứu nhanh Module 05</div>
+    <div class="nt">Reference Guide · Module 05: Async JavaScript, Event Loop &amp; Concurrency Control</div>
+    <p class="nd">Bảng tổng hợp 5 tầng kiến thức Async, so sánh các combinators và bộ mã polyfill chuẩn Senior.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0020-abort-controller.html">&#8592; Bài 20</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="../reference/05-async-event-loop.html">Cheatsheet Module 05 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Concurrency Limiter và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

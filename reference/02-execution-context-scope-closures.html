@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 02 · Execution Context, Scope Chain &amp; Closures</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .cs-badge { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #232838; color: var(--text-dim); margin-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it, .quiz { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 02 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 02 : Execution Context, Scope Chain &amp; Closures</h1>
+  <p class="subtitle">Bản đồ tư duy tóm lược cô đọng toàn bộ kiến thức nền tảng từ Bài 05 đến Bài 08 &mdash; Sẵn sàng cho phỏng vấn Senior Frontend và tối ưu hóa bộ nhớ chuyên sâu.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm vững 4 trục kiến thức cốt lõi (Execution Context, Hoisting/TDZ, Scope Chain/Lexical Scope, Closures &amp; Memory Leaks).</p>
+
+  <!-- TRỤC 1: EXECUTION CONTEXT -->
+  <h2>1. Trục 1: Execution Context &amp; Call Stack (Bài 05)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Giai đoạn</th>
+        <th>Hành động của JavaScript Engine</th>
+        <th>Trạng thái biến &amp; hàm</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Creation Phase (Khởi tạo)</strong></td>
+        <td>
+          1. Khởi tạo Scope Chain.<br>
+          2. Cấp phát Variable Object / Environment Record.<br>
+          3. Xác định giá trị liên kết <code>this</code>.
+        </td>
+        <td>
+          - <strong>Function Declarations:</strong> Lưu toàn bộ định nghĩa hàm vào ô nhớ.<br>
+          - <strong><code>var</code>:</strong> Đăng ký tên biến và gán mặc định <code>undefined</code>.<br>
+          - <strong><code>let</code> / <code>const</code>:</strong> Đăng ký tên biến nhưng rơi vào TDZ (chưa cấp phát ô nhớ).
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Execution Phase (Thực thi)</strong></td>
+        <td>Duyệt mã nguồn từ trên xuống dưới theo từng dòng lệnh, tính toán biểu thức và gọi hàm.</td>
+        <td>Gán giá trị thực tế cho biến (Assignment) và thực thi logic nghiệp vụ.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: HOISTING & TDZ -->
+  <h2>2. Trục 2: Vòng đời biến, Hoisting &amp; TDZ (Bài 06)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Từ khóa</th>
+        <th>Thời điểm Declaration</th>
+        <th>Thời điểm Initialization</th>
+        <th>Hành vi khi gọi trước khai báo ?</th>
+        <th>Phạm vi (Scope)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>var</code></td>
+        <td>Creation Phase</td>
+        <td><strong>Creation Phase</strong> (gán <code>undefined</code>)</td>
+        <td>Trả về <code>undefined</code></td>
+        <td>Function Scope (Rò rỉ qua block <code>{}</code>)</td>
+      </tr>
+      <tr>
+        <td><code>let</code></td>
+        <td>Creation Phase</td>
+        <td><strong>Execution Phase</strong> (chạm dòng khai báo)</td>
+        <td><strong>ReferenceError</strong> (dính TDZ)</td>
+        <td>Block Scope (Đóng gói trong <code>{}</code>)</td>
+      </tr>
+      <tr>
+        <td><code>const</code></td>
+        <td>Creation Phase</td>
+        <td><strong>Execution Phase</strong> (cùng lúc với Assignment)</td>
+        <td><strong>ReferenceError</strong> (dính TDZ)</td>
+        <td>Block Scope (Không cho phép gán lại)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 3: SCOPE CHAIN & LEXICAL SCOPE -->
+  <h2>3. Trục 3: Lexical Environment &amp; Scope Chain (Bài 07)</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <span class="cs-badge">CẤU TRÚC DỮ LIỆU</span>
+      <h3>Lexical Environment</h3>
+      <p>Gồm 2 thành phần: <strong>Environment Record</strong> (bảng ghi biến/hàm) và con trỏ <strong>outer</strong> tham chiếu tới phạm vi cha.</p>
+      <p><strong>Scope Chain</strong> bản chất là một <em>Singly Linked List</em> kết nối các Environment Records từ trong ra ngoài đến Global Environment (nơi có <code>outer === null</code>).</p>
+    </div>
+    <div class="cs-card">
+      <span class="cs-badge">QUY TẮC BẤT BIẾN</span>
+      <h3>Lexical Scoping (Static Scope)</h3>
+      <p>Phạm vi của một hàm được quyết định cố định tại <strong>nơi hàm được ĐỊNH NGHĨA trong mã nguồn</strong>, hoàn toàn KHÔNG PHỤ THUỘC vào nơi hàm được GỌI (Call-site).</p>
+      <p>Khi hàm con gọi hàm, nó tra cứu biến dọc theo Scope Chain từ vị trí định nghĩa tĩnh của nó.</p>
+    </div>
+  </div>
+
+  <!-- TRỤC 4: CLOSURES & MEMORY LEAKS -->
+  <h2>4. Trục 4: Closures &amp; Săn tìm Memory Leaks (Bài 08)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Khái niệm / Kịch bản</th>
+        <th>Bản chất kỹ thuật tầng Engine</th>
+        <th>Giải pháp / Lưu ý Senior</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Bản chất Closures</strong></td>
+        <td>V8 Scope Analysis phát hiện biến <em>closed-over</em> &rarr; Thực hiện <strong>Context Allocation</strong> chuyển biến từ Stack lên <strong>Memory Heap</strong>. Con trỏ <code>[[Environment]]</code> giữ Context Object không bị GC thu dọn.</td>
+        <td>Nền tảng của Module Pattern, Currying, Memoization và Private State.</td>
+      </tr>
+      <tr>
+        <td><strong>Dangling DOM Listener</strong></td>
+        <td>Element bị xóa khỏi DOM nhưng chưa gọi <code>removeEventListener</code> &rarr; Closure giữ tham chiếu khiến cả DOM Node và Context Object kẹt trên Heap (Detached DOM Tree).</td>
+        <td>Luôn trả về hàm <code>unsubscribe()</code> hoặc sử dụng <code>AbortController</code> với <code>{ signal }</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>Shared Lexical Scope Leak</strong></td>
+        <td>Nhiều hàm con trong cùng context chia sẻ chung 1 Context Object trên Heap. Một hàm nhỏ toàn cục có thể vô tình giữ lại mảng khổng lồ của một hàm con khác không còn dùng tới.</td>
+        <td>Gán biến trung gian về <code>null</code> sau khi xử lý xong các payload dữ liệu lớn.</td>
+      </tr>
+      <tr>
+        <td><strong>Shallow vs Retained Size</strong></td>
+        <td><em>Shallow Size:</em> Kích thước của chính đối tượng.<br><em>Retained Size:</em> Tổng lượng RAM sẽ được giải phóng ngay lập tức nếu đối tượng bị tiêu hủy.</td>
+        <td>Khi soi Chrome DevTools Heap Snapshot, <strong>luôn sắp xếp theo Retained Size giảm dần</strong> để tìm thủ phạm gây leak.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0008-closures-applications.html">&#8592; Bài 08</a>
+    <a href="../lessons/index.html">&#127968; Mục lục khóa học</a>
+    <a href="../lessons/0009-prototype-chain.html" class="disabled">Module 03 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh:</strong> Hãy lưu trang này để ôn luyện trước các buổi phỏng vấn kỹ thuật hoặc in ra (Ctrl + P) để ôn tập offline bất kỳ lúc nào !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

@@ -128,3 +128,24 @@ _Avoid_: Scope ladder, variable tree
 Thuật toán trừu tượng trong JavaScript Engine nhằm xác định giá trị tương ứng của một tên biến bằng cách duyệt tuyến tính dọc theo Scope Chain từ Environment Record hiện tại ra ngoài. Nếu đến Global Scope mà không tìm thấy: ném `ReferenceError` khi đọc biến, hoặc tạo thuộc tính toàn cục trên `window` khi gán biến trong non-strict mode.
 _Avoid_: Variable search, name lookup
 
+**Revealing Module Pattern**:
+Mẫu thiết kế phần mềm kết hợp hàm đóng gói (IIFE hoặc factory function) và Closures để tạo ra phạm vi dữ liệu riêng tư (Private State) và chỉ trả về một object công khai chứa các phương thức (Public API) được phép truy cập.
+_Avoid_: Object wrapper, hidden class pattern
+
+**Currying**:
+Kỹ thuật chuyển đổi một hàm nhận $n$ tham số thành một chuỗi $n$ hàm lồng nhau liên tiếp, trong đó mỗi hàm con nhận đúng một tham số duy nhất và lưu giữ các tham số trước đó nhờ Closures.
+_Avoid_: Nested calling, chain parameters
+
+**Memoization**:
+Kỹ thuật tối ưu hóa hiệu năng bằng cách lưu trữ kết quả của các lần gọi hàm thuần túy (Pure Functions) ứng với từng bộ tham số vào một bộ đệm (Cache) nằm trong phạm vi Closure, giúp các lần gọi sau trả kết quả ngay lập tức với $O(1)$.
+_Avoid_: Memory saving, function caching
+
+**Retained Size**:
+Tổng dung lượng bộ nhớ vật lý trên Memory Heap sẽ được Garbage Collector giải phóng ngay lập tức nếu đối tượng đích bị tiêu hủy (bao gồm chính đối tượng đó và toàn bộ cây đối tượng phụ thuộc chỉ có thể tiếp cận thông qua nó).
+_Avoid_: Object weight, total memory
+
+**Detached DOM Tree**:
+Hiện tượng rò rỉ bộ nhớ xảy ra khi một phần tử HTML đã bị gỡ khỏi cây DOM của trang web nhưng vẫn không thể bị Garbage Collector thu dọn do còn ít nhất một biến hoặc Closure trong JavaScript lưu giữ tham chiếu trực tiếp/gián tiếp tới nó.
+_Avoid_: Orphan node, floating element
+
+

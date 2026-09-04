@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 07 · Lexical Environment, Scope Chain &amp; Bản chất Closures</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 02 · Bài 07</span>
+  <h1>Bài 07 · Lexical Environment, Scope Chain &amp; Bản chất Closures</h1>
+  <p class="subtitle">Giải mã danh sách liên kết của Scope Chain, thuật toán phân giải định danh (Identifier Resolution) và cách JavaScript Engine lưu giữ Closures trên Memory Heap.</p>
+  <p class="meta-line">&#9203; ~17 phút &middot; &#127919; Mục tiêu: Hiểu rõ 2 thành phần của Lexical Environment (Environment Record + outer reference), phân biệt Lexical Scoping vs Dynamic Scoping, và bản chất bộ nhớ của Closures.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 06 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 06</div>
+    <p>Ở Bài 06, chúng ta đã khám phá tại sao vòng lặp <code>for (let j = 0...)</code> có thể lưu giữ giá trị <code>j</code> cho từng hàm callback bất đồng bộ: đó là vì mỗi lần lặp (iteration), JavaScript Engine tạo ra một <strong>Lexical Environment hoàn toàn mới</strong>.</p>
+    <p>Nhưng cơ chế nào liên kết các môi trường này lại với nhau ? Làm thế nào mà một hàm con vẫn có thể truy cập được biến của hàm cha kể cả khi hàm cha đã kết thúc và biến mất khỏi Call Stack ? Câu trả lời nằm ở <strong>Scope Chain</strong> và bản chất lưu trữ của <strong>Closures</strong> trên Memory Heap.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Cấu trúc giải phẫu của một Lexical Environment</h2>
+  <p>Theo đặc tả ECMAScript (ECMA-262 &sect;9.1), một <strong>Lexical Environment (Môi trường từ vựng)</strong> là một cấu trúc dữ liệu nội bộ được Engine sử dụng để xác định mối liên hệ giữa các định danh (Identifiers &mdash; tên biến, tên hàm) và giá trị cụ thể của chúng.</p>
+
+  <p>Mỗi Lexical Environment gồm đúng <strong>2 thành phần cốt lõi</strong> :</p>
+  <ol>
+    <li>
+      <strong>Environment Record :</strong> Một bảng ghi nội bộ lưu trữ toàn bộ các khai báo biến (<code>let</code>, <code>const</code>, <code>var</code>, <code>class</code>) và khai báo hàm trong phạm vi đó.
+      <ul>
+        <li><em>Declarative Environment Record:</em> Quản lý biến trong Block Scope, Function Scope.</li>
+        <li><em>Object Environment Record:</em> Quản lý biến trong Global Scope (ánh xạ trực tiếp tới đối tượng <code>window</code> hoặc <code>globalThis</code>).</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Outer Reference (Tham chiếu môi trường ngoài) :</strong> Một con trỏ trỏ trực tiếp tới Lexical Environment bao bọc bên ngoài nơi hàm được định nghĩa. Ở Global Scope, con trỏ <code>outer</code> có giá trị là <code>null</code>.
+    </li>
+  </ol>
+
+  <div class="callout why">
+    <div class="ct">&#128161; Bản chất cấu trúc dữ liệu của Scope Chain</div>
+    <p><strong>Scope Chain thực chất là một Danh sách liên kết đơn (Singly Linked List)</strong> các Environment Records !</p>
+    <p>Mỗi node trong danh sách này chứa dữ liệu cục bộ của nó và một con trỏ <code>outer</code> trỏ ngược về node cha. Khi cần tìm kiếm một biến, Engine duyệt dọc theo danh sách liên kết này từ node hiện tại cho đến node gốc (Global Environment).</p>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Lexical Scoping vs Dynamic Scoping: Phạm vi tĩnh là gì ?</h2>
+  <p>JavaScript là một ngôn ngữ sử dụng <strong>Lexical Scoping (Static Scoping &mdash; Phạm vi từ vựng tĩnh)</strong>. Điều này có nghĩa là :</p>
+
+  <p><em>"Phạm vi truy cập của một hàm được quyết định cố định tại vị trí hàm được <strong>ĐỊNH NGHĨA (viết ra trong code)</strong>, hoàn toàn KHÔNG PHỤ THUỘC vào vị trí hàm được <strong>GỌI (Call-site)</strong>."</em></p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Thí nghiệm chứng minh Lexical Scoping</span>
+    <pre><code><span class="kw">const</span> x = <span class="str">"Global x"</span>;
+
+<span class="kw">function</span> <span class="fn">foo</span>() {
+  <span class="cmt">// foo() được khai báo ở Global Scope.</span>
+  <span class="cmt">// Do đó, con trỏ `outer` của foo() trỏ thẳng về Global Environment !</span>
+  console.<span class="fn">log</span>(x);
+}
+
+<span class="kw">function</span> <span class="fn">bar</span>() {
+  <span class="kw">const</span> x = <span class="str">"Local x in bar"</span>;
+  <span class="cmt">// Gọi foo() tại đây (Call-site)</span>
+  <span class="fn">foo</span>();
+}
+
+<span class="fn">bar</span>(); <span class="cmt">// &#8594; In ra gì ? "Global x" hay "Local x in bar" ?</span></code></pre>
+  </div>
+
+  <p><strong>Kết quả :</strong> Console sẽ in ra <code>"Global x"</code> !</p>
+  <p>Dù <code>foo()</code> được kích hoạt bên trong <code>bar()</code> (nơi có biến <code>x = "Local x in bar"</code>), nhưng vì <code>foo()</code> được sinh ra ở Global Scope, con trỏ <code>outer</code> của nó vĩnh viễn trỏ về Global. Nó hoàn toàn "mù" trước môi trường nội bộ của <code>bar()</code>.</p>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Thuật toán phân giải định danh (Identifier Resolution)</h2>
+  <p>Khi JavaScript Engine bắt gặp một biến (ví dụ: <code>console.log(myVar)</code>), thuật toán phân giải định danh diễn ra theo các bước nghiêm ngặt sau :</p>
+
+  <ol>
+    <li>Tìm kiếm định danh <code>myVar</code> trong <strong>Environment Record hiện tại</strong>. Nếu thấy &rarr; Dừng lại và lấy giá trị.</li>
+    <li>Nếu không thấy, lần theo con trỏ <strong><code>outer</code></strong> để nhảy sang Lexical Environment cha.</li>
+    <li>Lặp lại bước 1 và 2 cho đến khi chạm tới <strong>Global Environment Record</strong> (nơi có <code>outer === null</code>).</li>
+    <li>Nếu đã tới Global mà vẫn không tìm thấy định danh :</li>
+  </ol>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Thao tác</th>
+        <th>Non-Strict Mode</th>
+        <th>Strict Mode (<code>'use strict'</code>)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>ĐỌC biến</strong> (RHS &mdash; Right Hand Side)<br>Ví dụ: <code>console.log(unknown)</code></td>
+        <td>Ném <code>ReferenceError: unknown is not defined</code></td>
+        <td>Ném <code>ReferenceError: unknown is not defined</code></td>
+      </tr>
+      <tr>
+        <td><strong>GÁN biến chưa khai báo</strong> (LHS &mdash; Left Hand Side)<br>Ví dụ: <code>unknown = 42</code></td>
+        <td><strong>Âm thầm tạo biến toàn cục</strong> trên <code>window</code> (Ô nhiễm bộ nhớ &amp; Rò rỉ bug cực nặng !)</td>
+        <td><strong>Ném <code>ReferenceError: unknown is not defined</code></strong> (An toàn tuyệt đối)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Bản chất Closures dưới lăng kính V8 &amp; Memory Heap</h2>
+  <p><strong>Định nghĩa chuẩn :</strong> Một <strong>Closure (Bao đóng)</strong> là sự kết hợp giữa một hàm và môi trường từ vựng (Lexical Environment) nơi hàm đó được khai báo. Nói cách khác, một Closure cho phép một hàm con "ghi nhớ" và truy cập vào các biến ở phạm vi bên ngoài ngay cả khi hàm cha đã kết thúc thực thi.</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Ví dụ Closure cơ bản</span>
+    <pre><code><span class="kw">function</span> <span class="fn">createCounter</span>() {
+  <span class="kw">let</span> count = <span class="num">0</span>; <span class="cmt">// Biến cục bộ trong createCounter</span>
+
+  <span class="kw">return</span> <span class="kw">function</span> <span class="fn">increment</span>() {
+    count++;
+    <span class="kw">return</span> count;
+  };
+}
+
+<span class="kw">const</span> counter = <span class="fn">createCounter</span>();
+console.<span class="fn">log</span>(<span class="fn">counter</span>()); <span class="cmt">// &#8594; 1</span>
+console.<span class="fn">log</span>(<span class="fn">counter</span>()); <span class="cmt">// &#8594; 2</span></code></pre>
+  </div>
+
+  <div class="callout danger">
+    <div class="ct">&#128302; Bí mật của V8: Biến của hàm cha biến đi đâu khi hàm kết thúc ?</div>
+    <p>Hãy suy nghĩ về luồng hoạt động thông thường :</p>
+    <p>Khi <code>createCounter()</code> được gọi, một Stack Frame được đẩy vào Call Stack. Khi nó gặp lệnh <code>return</code>, hàm kết thúc và Stack Frame bị <strong>POP ra khỏi Call Stack</strong>. Mọi dữ liệu trên Stack Frame sẽ bị huỷ bỏ ngay lập tức !</p>
+    <p>Vậy tại sao khi ta gọi <code>counter()</code> sau đó, nó vẫn truy cập và tăng được biến <code>count</code> ? Biến <code>count</code> nằm ở đâu ?</p>
+    <p><strong>Cơ chế V8 Scope Analysis &amp; Heap Context Allocation :</strong></p>
+    <ul>
+      <li>Trong pha phân tích tĩnh (Parsing/Compilation), V8 phát hiện hàm con <code>increment</code> có tham chiếu tới biến <code>count</code> của hàm cha (biến này được gọi là <em>closed-over variable</em>).</li>
+      <li>V8 nhận ra hàm con này được <code>return</code> ra ngoài (có thể sống lâu hơn hàm cha).</li>
+      <li>Do đó, V8 <strong>KHÔNG lưu <code>count</code> trên Call Stack</strong> ! Thay vào đó, V8 cấp phát một đối tượng gọi là <strong>Context Object</strong> nằm trực tiếp trên <strong>Memory Heap</strong>.</li>
+      <li>Hàm con <code>increment</code> lưu giữ một thuộc tính nội bộ ẩn là <code>[[Environment]]</code> trỏ trực tiếp tới Context Object trên Memory Heap này.</li>
+      <li>Dù Stack Frame của <code>createCounter</code> đã tan biến, Context Object trên Heap vẫn tồn tại vì hàm <code>counter</code> còn giữ tham chiếu tới nó. Garbage Collector sẽ không thu gom cho tới khi không còn ai tham chiếu tới <code>counter</code> nữa !</li>
+    </ul>
+  </div>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Closure được lưu trữ ở đâu trong bộ nhớ ? Call Stack hay Memory Heap ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Các biến thông thường của một hàm nếu không được đóng gói (không bị close-over) sẽ được cấp phát trên Call Stack để giải phóng nhanh chóng khi hàm kết thúc. Tuy nhiên, khi một biến được tham chiếu bởi một Closure có vòng đời vượt quá hàm cha, JavaScript Engine (như V8) sẽ thực hiện <strong>Context Allocation</strong> và di chuyển biến đó lên <strong>Memory Heap</strong>. Hàm con nắm giữ tham chiếu nội bộ `[[Environment]]` trỏ tới Context Object trên Heap, bảo đảm biến không bị Garbage Collector dọn dẹp."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Khi gọi hàm cha nhiều lần thì các Closure được sinh ra dùng chung hay độc lập biến với nhau ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Hoàn toàn độc lập. Mỗi lần hàm cha được kích hoạt, một Execution Context mới và một Lexical Environment (Context Object trên Heap) mới tinh được khởi tạo riêng biệt. Do đó, hai instance closure từ hai lần gọi hàm cha khác nhau sẽ quản lý hai vùng nhớ hoàn toàn độc lập, không hề can thiệp lẫn nhau. Trừ trường hợp các hàm con cùng được sinh ra trong CÙNG MỘT lần gọi hàm cha (như cặp getter/setter của một module) thì chúng mới chia sẻ chung một Environment Record."</em></p>
+  </div>
+
+  <!-- PHẦN 6 -->
+  <h2>6. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code sau in ra kết quả gì ?<br>
+    <code>var val = 10; function getVal() { return val; } function run() { var val = 20; return getVal(); } run();</code></div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! JavaScript dùng Lexical Scoping. getVal() được định nghĩa ở Global Scope nên con trỏ outer của nó trỏ về Global (val = 10), hoàn toàn không phụ thuộc vào nơi nó được gọi bên trong hàm run().">A. 10</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Nếu in ra 20 thì đó là Dynamic Scoping, nhưng JavaScript sử dụng Lexical Scoping (phạm vi từ vựng tĩnh).">B. 20</button>
+    <button class="opt" data-correct="false" data-explain="Sai! getVal tìm thấy val ở Global Scope nên không hề có lỗi ReferenceError.">C. ReferenceError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Trong đoạn code sau, giá trị in ra cuối cùng là bao nhiêu ?<br>
+    <code>function make() { let x = 5; return [() => ++x, () => x * 2]; } const [inc, dbl] = make(); inc(); console.log(dbl());</code></div>
+    <button class="opt" data-correct="false" data-explain="Sai! Cả hai hàm inc và dbl được tạo ra trong CÙNG MỘT lần gọi make(), nên chúng chia sẻ chung ô nhớ biến x. Khi inc() tăng x từ 5 lên 6, dbl() sẽ đọc giá trị x mới là 6.">A. 10</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Cả inc và dbl cùng chia sẻ chung một Lexical Environment trên Heap. inc() tăng x từ 5 lên 6. Sau đó dbl() nhân 6 * 2 = 12.">B. 12</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Giá trị x đã thay đổi trước khi hàm dbl() được gọi.">C. 11</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>7. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Đã hiểu 2 thành phần cốt lõi của Lexical Environment: Environment Record và con trỏ <code>outer</code>.</div>
+    <div>&#9989; Nắm chắc bản chất Scope Chain là một Singly Linked List nối các Environment Records.</div>
+    <div>&#9989; Phân biệt rạch ròi Lexical Scoping (xác định tại nơi định nghĩa) vs Dynamic Scoping (nơi gọi hàm).</div>
+    <div>&#9989; Hiểu cơ chế V8 di chuyển biến của Closure từ Call Stack sang Memory Heap qua Context Allocation.</div>
+    <div>&#9989; Toàn bộ 56 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 08 :</div>
+    <p>Chúng ta đã biết V8 sẽ giữ các biến của hàm cha trên Memory Heap chừng nào hàm con (Closure) vẫn còn tồn tại trong bộ nhớ.</p>
+    <p><em>"Nếu chúng ta vô tình lưu giữ tham chiếu đến một Closure không còn sử dụng (ví dụ gắn vào Event Listener của DOM đã bị gỡ bỏ, hoặc Timer trong `setInterval` bị bỏ quên), toàn bộ Context Object trên Heap sẽ bị kẹt lại vĩnh viễn. Làm thế nào để áp dụng Closures để xây dựng <strong>Module Pattern &amp; Private State</strong> an toàn, và dùng công cụ gì trong <strong>Chrome DevTools Memory Profiler</strong> để truy tìm các ổ <strong>Memory Leaks</strong> bí ẩn này ?"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 08 · Ứng dụng Closures: Module Pattern, Private State &amp; Memory Leaks Hunting</div>
+    <p class="nd">Thiết kế State cô lập với Closures, phân tích rò rỉ bộ nhớ thực tế và thực hành chụp Heap Snapshot trên Chrome DevTools.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0006-hoisting-tdz.html">&#8592; Bài 06</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để xem 6 bài test của Bài 07 và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

@@ -119,3 +119,12 @@ _Avoid_: Code lifting, moving to top
 **Temporal Dead Zone (TDZ)**:
 Khoảng thời gian trong vòng đời của một biến bắt đầu từ khi bước vào phạm vi khối (Block Scope) cho đến khi câu lệnh khai báo (`let`/`const`) được thực thi. Trong TDZ, biến đã được khai báo nhưng chưa được khởi tạo (Uninitialized); mọi thao tác đọc/ghi đều ném ra ngoại lệ `ReferenceError`.
 _Avoid_: Dead scope, uninitialized zone
+
+**Scope Chain**:
+Danh sách liên kết đơn (Singly Linked List) kết nối các Lexical Environments thông qua con trỏ tham chiếu `outer`. Xác định thứ tự phân giải biến từ phạm vi cục bộ hiện tại ngược lên phạm vi cha và kết thúc ở Global Environment.
+_Avoid_: Scope ladder, variable tree
+
+**Identifier Resolution (Phân giải định danh)**:
+Thuật toán trừu tượng trong JavaScript Engine nhằm xác định giá trị tương ứng của một tên biến bằng cách duyệt tuyến tính dọc theo Scope Chain từ Environment Record hiện tại ra ngoài. Nếu đến Global Scope mà không tìm thấy: ném `ReferenceError` khi đọc biến, hoặc tạo thuộc tính toàn cục trên `window` khi gán biến trong non-strict mode.
+_Avoid_: Variable search, name lookup
+

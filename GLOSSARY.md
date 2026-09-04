@@ -248,6 +248,19 @@ _Avoid_: Sub-task queue, inner queue
 Hiện tượng vòng lặp sự kiện bị phong tỏa hoàn toàn (không thể render UI hay xử lý các Macrotask kế tiếp) do một chuỗi đệ quy tác vụ vi mô liên tục nhồi thêm việc vào Microtask Queue khiến hàng đợi này không bao giờ xả cạn.
 _Avoid_: Loop freeze, stack blocking
 
+**queueMicrotask**:
+API chuẩn mực của W3C/WHATWG cho phép đẩy trực tiếp một hàm callback vào Microtask Queue mà không cần khởi tạo đối tượng Promise trên bộ nhớ Heap, giúp tiết kiệm RAM và giảm tải cho Garbage Collector.
+_Avoid_: Microtask helper, promise tick
+
+**requestAnimationFrame (rAF)**:
+API của trình duyệt thông báo cho Engine kích hoạt hàm callback chỉ định ngay trước lần vẽ (Paint/Repaint) tiếp theo của màn hình, giúp đồng bộ hóa chuyển động mượt mà theo tần số quét phần cứng (V-Sync: 60Hz/120Hz).
+_Avoid_: Frame timer, screen interval
+
+**Rendering Pipeline (Trình duyệt)**:
+Quy trình tính toán tuần tự của trình duyệt để hiển thị pixel lên màn hình sau khi mã JavaScript thực thi: rAF Callbacks &rarr; Recalculate Styles &rarr; Layout (Reflow) &rarr; Update Layer Tree &rarr; Paint &rarr; Composite Layers.
+_Avoid_: Paint loop, DOM refresh
+
+
 
 
 

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 17 · Thứ tự thực thi: Microtasks vs Macrotasks vs requestAnimationFrame vs queueMicrotask</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 05 · Bài 17</span>
+  <h1>Bài 17 · Thứ tự thực thi: Microtasks vs Macrotasks vs <code>requestAnimationFrame</code> vs <code>queueMicrotask</code></h1>
+  <p class="subtitle">Làm chủ chu kỳ Rendering Frame (60Hz/120Hz), phân tích vị trí chính xác của requestAnimationFrame, giải phẫu bản chất async/await và bẻ khóa mọi câu đố Execution Order trong phỏng vấn Senior.</p>
+  <p class="meta-line">&#9203; ~22 phút &middot; &#127919; Mục tiêu: Đọc vị chính xác thứ tự in log của bất kỳ đoạn mã bất đồng bộ lồng nhau nào, hiểu rõ cơ chế đồng bộ hóa animation với tần số quét màn hình, và sử dụng thành thạo queueMicrotask.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 16 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 16</div>
+    <p>Ở Bài 16, chúng ta đã nắm chắc nguyên lý 1 Tick của Event Loop: Call Stack &rarr; Vét cạn Microtask Queue &rarr; Render Phase &rarr; Bốc 1 Macrotask. Nhưng trên chiến trường phỏng vấn thực tế, các câu hỏi hóc búa nhất thường trộn lẫn <code>console.log</code>, <code>setTimeout</code>, <code>Promise.then</code>, <code>async/await</code>, <code>queueMicrotask</code> và <code>requestAnimationFrame</code> trong nhiều tầng lồng nhau.</p>
+    <p>Bài học này sẽ cung cấp cho bạn một <strong>thuật toán tư duy 4 bước</strong> để phân giải thứ tự thực thi chính xác 100% trong vòng dưới 30 giây mà không cần đoán mò.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Giải mã <code>async / await</code>: Chạy đồng bộ hay bất đồng bộ ?</h2>
+  <p>Rất nhiều lập trình viên hiểu lầm rằng hàm <code>async</code> sẽ đẩy toàn bộ nội dung của nó vào hàng đợi bất đồng bộ. Đây là một sai lầm chết người !</p>
+  <p>Quy tắc kỹ thuật của V8 Engine :</p>
+  <ul>
+    <li><strong>Phần mã đứng TRƯỚC từ khóa <code>await</code> :</strong> Thực thi hoàn toàn <strong>ĐỒNG BỘ</strong> trên Call Stack ngay tại thời điểm hàm được gọi !</li>
+    <li><strong>Tại dòng chứa <code>await expr</code> :</strong> Biểu thức <code>expr</code> được thực thi ngay lập tức và được bọc thành <code>Promise.resolve(expr)</code>.</li>
+    <li><strong>Toàn bộ phần mã đứng SAU <code>await</code> :</strong> Bị tạm dừng (pause), được đóng gói tương đương với một callback trong <code>.then()</code> và được đẩy vào <strong>Microtask Queue</strong> !</li>
+  </ul>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Giải phẫu bản chất async/await</span>
+    <pre><code><span class="kw">async function</span> <span class="fn">demoAsync</span>() {
+  console.<span class="fn">log</span>(<span class="str">"2. Trước await (ĐỒNG BỘ !)"</span>);
+  <span class="kw">await</span> Promise.<span class="fn">resolve</span>();
+  console.<span class="fn">log</span>(<span class="str">"4. Sau await (Được đẩy vào Microtask Queue)"</span>);
+}
+
+console.<span class="fn">log</span>(<span class="str">"1. Bắt đầu script"</span>);
+<span class="fn">demoAsync</span>();
+console.<span class="fn">log</span>(<span class="str">"3. Kết thúc script"</span>);
+
+<span class="cmt">// THỨ TỰ IN LOG:</span>
+<span class="cmt">// 1. Bắt đầu script</span>
+<span class="cmt">// 2. Trước await (ĐỒNG BỘ !)</span>
+<span class="cmt">// 3. Kết thúc script</span>
+<span class="cmt">// 4. Sau await (Microtask)</span></code></pre>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Vị trí của <code>requestAnimationFrame</code> &amp; Rendering Pipeline</h2>
+  <p>Màn hình máy tính thông thường làm mới ở tần số <strong>60Hz (16.6ms / frame)</strong> hoặc <strong>120Hz (8.3ms / frame)</strong>. Trong khoảng thời gian 16.6ms đó, Event Loop có thể quay hàng chục hoặc hàng trăm tick microtask/macrotask, nhưng trình duyệt <strong>CHỈ VẼ LẠI GIAO DIỆN (Paint) khi đến nhịp V-Sync của phần cứng</strong> !</p>
+
+  <p>Quy trình Rendering Pipeline trong 1 Frame gồm các bước :</p>
+  <ol>
+    <li>Thực thi 1 Macrotask và vét sạch các Microtask phát sinh.</li>
+    <li><strong>Kích hoạt các callback của <code>requestAnimationFrame (rAF)</code> :</strong> Được gọi ngay trước khi trình duyệt tính toán lại Style/Layout để bạn có thể cập nhật các thuộc tính DOM cần vẽ.</li>
+    <li><strong>Recalculate Styles &amp; Layout (Reflow) :</strong> Tính toán vị trí và hình học của các phần tử.</li>
+    <li><strong>Update Layer Tree &amp; Paint :</strong> Vẽ các pixel lên màn hình thông qua GPU Compositor.</li>
+  </ol>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Tại sao setTimeout(fn, 0) gây giật lag khi làm animation ?</div>
+    <p>Nếu bạn dùng <code>setTimeout</code> để làm animation, callback của timer có thể bị kích hoạt lệch pha với nhịp V-Sync của màn hình (ví dụ: kích hoạt 2 lần trong 1 frame hoặc bị hoãn sang frame sau), gây ra hiện tượng <strong>Frame Dropping (rớt khung hình)</strong> và giật lag.</p>
+    <p><code>requestAnimationFrame</code> được thiết kế để khớp 100% với nhịp refresh của phần cứng, đảm bảo hiệu ứng đạt 60 FPS hoặc 120 FPS mượt mà tuyệt đối.</p>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. <code>queueMicrotask</code>: API Microtask chính thống của W3C</h2>
+  <p>Trước ES2020, để chủ động đưa một hàm vào Microtask Queue mà không có sẵn Promise, lập trình viên thường phải "hack" bằng cách viết :</p>
+  <pre><code>Promise.<span class="fn">resolve</span>().<span class="fn">then</span>(callback);</code></pre>
+  <p>Nhược điểm của cách này :</p>
+  <ul>
+    <li>Engine phải cấp phát một đối tượng Promise mới trên Memory Heap (tốn RAM và tăng tải cho Garbage Collector).</li>
+    <li>Nếu trong callback ném lỗi mà không có <code>.catch()</code>, nó sẽ phát sinh <code>UnhandledPromiseRejection</code>.</li>
+  </ul>
+  <p>Chuẩn web hiện đại giới thiệu <strong><code>queueMicrotask(callback)</code></strong> :</p>
+  <pre><code><span class="fn">queueMicrotask</span>(() => {
+  <span class="cmt">// Được đẩy trực tiếp vào Microtask Queue của V8 ở tầng C++ !</span>
+  <span class="cmt">// Không tạo Promise object, siêu nhẹ và tối ưu bộ nhớ Heap.</span>
+});</code></pre>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Ma trận &amp; Thuật toán 4 bước "Bẻ khóa" câu đố Execution Order</h2>
+  <p>Khi gặp bất kỳ bài tập thứ tự thực thi nào, hãy vẽ 2 hàng đợi ra nháp : <code>[Microtask Queue]</code> và <code>[Macrotask Queue]</code> và thực hiện đúng 4 bước :</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Bước</th>
+          <th>Hành động</th>
+          <th>Quy tắc ghi nhớ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Bước 1</strong></td>
+          <td>Chạy mã đồng bộ (Call Stack) từ trên xuống dưới.</td>
+          <td>Gặp <code>console.log</code> &rarr; in ngay; gặp <code>setTimeout</code> &rarr; đẩy vào Task Queue; gặp <code>Promise.then/queueMicrotask</code> &rarr; đẩy vào Microtask Queue.</td>
+        </tr>
+        <tr>
+          <td><strong>Bước 2</strong></td>
+          <td>Vét cạn Microtask Queue theo thứ tự FIFO.</td>
+          <td>Nếu trong lúc chạy microtask lại sinh ra microtask con &rarr; chạy tiếp ngay trong lượt này đến khi hàng đợi RỖNG TUẾCH.</td>
+        </tr>
+        <tr>
+          <td><strong>Bước 3</strong></td>
+          <td>Kiểm tra Render Pipeline (nếu có <code>requestAnimationFrame</code>).</td>
+          <td>Chạy rAF trước khi vẽ màn hình.</td>
+        </tr>
+        <tr>
+          <td><strong>Bước 4</strong></td>
+          <td>Bốc ĐÚNG 1 Macrotask từ Task Queue đưa lên Call Stack.</td>
+          <td>Sau khi Macrotask này chạy xong &rarr; lập tức quay lại Bước 2 để vét sạch Microtask mới sinh !</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Bài toán phỏng vấn kinh điển: Tác vụ lồng nhau</span>
+    <pre><code><span class="cmt">// Nhánh A: setTimeout chứa Promise</span>
+setTimeout(() => {
+  console.<span class="fn">log</span>(<span class="str">"Macro A (setTimeout ngoài)"</span>);
+  Promise.<span class="fn">resolve</span>().<span class="fn">then</span>(() => {
+    console.<span class="fn">log</span>(<span class="str">"Micro A (Promise trong setTimeout)"</span>);
+  });
+}, <span class="num">0</span>);
+
+<span class="cmt">// Nhánh B: Promise chứa setTimeout</span>
+Promise.<span class="fn">resolve</span>().<span class="fn">then</span>(() => {
+  console.<span class="fn">log</span>(<span class="str">"Micro B (Promise ngoài)"</span>);
+  setTimeout(() => {
+    console.<span class="fn">log</span>(<span class="str">"Macro B (setTimeout trong Promise)"</span>);
+  }, <span class="num">0</span>);
+});
+
+<span class="cmt">// THỨ TỰ THỰC THI CHUẨN XÁC:</span>
+<span class="cmt">// 1. "Micro B (Promise ngoài)"             <-- Microtask ngoài chạy trước Macrotask</span>
+<span class="cmt">// 2. "Macro A (setTimeout ngoài)"          <-- Bốc Macrotask đầu tiên (Macro A)</span>
+<span class="cmt">// 3. "Micro A (Promise trong setTimeout)"  <-- Vét cạn Microtask sinh ra bởi Macro A</span>
+<span class="cmt">// 4. "Macro B (setTimeout trong Promise)"  <-- Bốc Macrotask kế tiếp (Macro B)</span></code></pre>
+  </div>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Xét đoạn code sau :<br>
+    <code>async function f() { console.log(1); await null; console.log(2); }<br>
+    f(); console.log(3);</code><br>
+    Thứ tự in ra console là gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! console.log(1) đứng trước await nên chạy đồng bộ ngay lập tức.">A. 3, 1, 2</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! f() chạy đồng bộ in ra 1. Gặp await null, toàn bộ phần sau bị đẩy vào Microtask Queue. Script tiếp tục chạy đồng bộ in ra 3. Sau khi Call Stack trống, Microtask được xả in ra 2.">B. 1, 3, 2</button>
+    <button class="opt" data-correct="false" data-explain="Sai! console.log(2) bị trì hoãn sau await nên không thể chạy trước 3.">C. 1, 2, 3</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Điểm khác biệt quan trọng nhất giữa queueMicrotask(fn) và Promise.resolve().then(fn) là gì ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! queueMicrotask đưa trực tiếp callback vào hàng đợi microtask mà không cần tạo đối tượng Promise trên bộ nhớ Heap, tiết kiệm tài nguyên và tối ưu hiệu năng.">A. queueMicrotask không tạo đối tượng Promise trên Heap, giúp tối ưu bộ nhớ và giảm tải GC</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Cả hai đều được đưa vào cùng một Microtask Queue theo thứ tự FIFO.">B. queueMicrotask có độ ưu tiên cao hơn Promise.then trong hàng đợi</button>
+    <button class="opt" data-correct="false" data-explain="Sai! queueMicrotask là API tiêu chuẩn được hỗ trợ trên cả Trình duyệt hiện đại và Node.js 11+.">C. queueMicrotask chỉ hoạt động trên trình duyệt, không dùng được trong Node.js</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng trước khi sang Bài 18</h2>
+  <div class="checklist">
+    <div>&#9989; Nắm chắc cơ chế phân rã <code>async/await</code>: trước await là đồng bộ, sau await là microtask.</div>
+    <div>&#9989; Hiểu rõ vị trí của <code>requestAnimationFrame</code> trong Rendering Pipeline trước bước Paint.</div>
+    <div>&#9989; Phân biệt được ưu điểm của <code>queueMicrotask</code> so với <code>Promise.resolve().then()</code>.</div>
+    <div>&#9989; Tự tin giải quyết các bài toán phỏng vấn tác vụ lồng nhau nhiều tầng.</div>
+    <div>&#9989; Toàn bộ 114 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 18 :</div>
+    <p>Chúng ta đã thấy <code>Promise</code> đóng vai trò trung tâm trong Microtask Queue. Nhưng đằng sau cú pháp <code>new Promise((resolve, reject) => ...)</code> và chuỗi nối <code>.then().catch().finally()</code>...</p>
+    <p><em>"Promise lưu trữ trạng thái (Pending, Fulfilled, Rejected) bên trong như thế nào ? Làm thế nào mà một `.then()` có thể biến đổi dữ liệu và lan truyền lỗi qua nhiều tầng ? Hãy sẵn sàng bước vào <strong>Bài 18: Promise Architecture: State Machine, .then Chaining &amp; Error Propagation</strong> !"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 18 · Promise Architecture: State Machine, `.then` Chaining &amp; Error Propagation</div>
+    <p class="nd">Giải phẫu cấu trúc dữ liệu State Machine của Promise, thuật toán Promise Resolution Procedure và quy tắc bắt lỗi đa tầng.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0016-event-loop-callstack.html">&#8592; Bài 16</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test thứ tự thực thi và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

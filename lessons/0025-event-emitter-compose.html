@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 25 · Live-coding: Cài đặt EventEmitter &amp; pipe/compose</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 06 · Bài 25 (Functional Programming &amp; Utility Polyfills)</span>
+  <h1>Bài 25 · Live-coding: Cài đặt <code>EventEmitter</code> &amp; <code>pipe</code>/<code>compose</code></h1>
+  <p class="subtitle">Hai mô hình cốt lõi xây dựng kiến trúc phần mềm quy mô lớn: Kiến trúc hướng sự kiện (Event-Driven Architecture với Pub/Sub pattern) và Đường ống biến đổi dữ liệu thuần khiết (Function Composition Pipeline).</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Tự tay xây dựng EventEmitter đầy đủ tính năng (on, off, emit, once, unsubscribe), phân biệt thứ tự thực thi pipe (L2R) vs compose (R2L) và cài đặt phiên bản hỗ trợ async/Promise.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 24 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 24</div>
+    <p>Ở Bài 24, bạn đã xử lý sao chép dữ liệu độc lập với <code>deepClone</code>. Khi dữ liệu cần được truyền tải giữa các thành phần không phụ thuộc lẫn nhau (Decoupled Components), chúng ta dùng <strong>EventEmitter</strong>. Khi dữ liệu cần đi qua một chuỗi các bước biến đổi liên tiếp, chúng ta dùng <strong>pipe</strong> và <strong>compose</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1: EVENT EMITTER -->
+  <h2>1. Kiến trúc Pub/Sub &amp; Live-coding <code>EventEmitter</code></h2>
+  <p><strong>EventEmitter</strong> là hiện thực của mẫu thiết kế <em>Publish/Subscribe (Observer Pattern)</em>. Một thành phần phát ra sự kiện mà không cần biết ai đang lắng nghe nó, giúp các module độc lập tuyệt đối.</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt EventEmitter chuẩn Node.js</span>
+    <pre><code><span class="kw">class</span> <span class="fn">EventEmitter</span> {
+  <span class="fn">constructor</span>() {
+    <span class="kw">this</span>.events = <span class="kw">new</span> <span class="fn">Map</span>(); <span class="cmt">// Map: eventName -> Array of listeners</span>
+  }
+
+  <span class="cmt">// Đăng ký sự kiện</span>
+  <span class="fn">on</span>(eventName, listener) {
+    <span class="kw">if</span> (<span class="kw">typeof</span> listener !== <span class="str">'function'</span>) <span class="kw">throw new</span> <span class="fn">TypeError</span>(<span class="str">'Listener must be a function'</span>);
+    <span class="kw">if</span> (!<span class="kw">this</span>.events.<span class="fn">has</span>(eventName)) {
+      <span class="kw">this</span>.events.<span class="fn">set</span>(eventName, []);
+    }
+    <span class="kw">this</span>.events.<span class="fn">get</span>(eventName).<span class="fn">push</span>(listener);
+
+    <span class="cmt">// Trả về Subscription object tiện lợi cho cleanup</span>
+    <span class="kw">return</span> {
+      unsubscribe: () => <span class="kw">this</span>.<span class="fn">off</span>(eventName, listener),
+    };
+  }
+
+  <span class="cmt">// Phát sự kiện kèm dữ liệu</span>
+  <span class="fn">emit</span>(eventName, ...args) {
+    <span class="kw">if</span> (!<span class="kw">this</span>.events.<span class="fn">has</span>(eventName)) <span class="kw">return</span> [];
+    <span class="cmt">// Copy mảng listeners để tránh lỗi khi listener tự gỡ bỏ chính nó trong lúc emit</span>
+    <span class="kw">const</span> listeners = [...<span class="kw">this</span>.events.<span class="fn">get</span>(eventName)];
+    <span class="kw">return</span> listeners.<span class="fn">map</span>(listener => listener.<span class="fn">apply</span>(<span class="kw">this</span>, args));
+  }
+
+  <span class="cmt">// Hủy đăng ký listener</span>
+  <span class="fn">off</span>(eventName, listener) {
+    <span class="kw">if</span> (!<span class="kw">this</span>.events.<span class="fn">has</span>(eventName)) <span class="kw">return this</span>;
+    <span class="kw">const</span> listeners = <span class="kw">this</span>.events.<span class="fn">get</span>(eventName);
+    <span class="kw">const</span> index = listeners.<span class="fn">indexOf</span>(listener);
+    <span class="kw">if</span> (index !== -<span class="num">1</span>) listeners.<span class="fn">splice</span>(index, <span class="num">1</span>);
+    <span class="kw">if</span> (listeners.length === <span class="num">0</span>) <span class="kw">this</span>.events.<span class="fn">delete</span>(eventName);
+    <span class="kw">return this</span>;
+  }
+
+  <span class="cmt">// Lắng nghe đúng 1 lần rồi tự hủy</span>
+  <span class="fn">once</span>(eventName, listener) {
+    <span class="kw">const</span> wrapper = (...args) => {
+      <span class="kw">this</span>.<span class="fn">off</span>(eventName, wrapper);
+      <span class="kw">return</span> listener.<span class="fn">apply</span>(<span class="kw">this</span>, args);
+    };
+    <span class="kw">return this</span>.<span class="fn">on</span>(eventName, wrapper);
+  }
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 2: FUNCTION COMPOSITION -->
+  <h2>2. Function Composition: <code>pipe</code> vs <code>compose</code></h2>
+  <p>Thay vì viết các hàm lồng nhau khó đọc <code>h(g(f(x)))</code>, lập trình hàm sử dụng <strong>Composition</strong> để xâu chuỗi các hàm thuần khiết thành một pipeline duy nhất :</p>
+
+  <table class="data">
+    <thead>
+      <tr><th>Kỹ thuật</th><th>Hướng thực thi</th><th>Công thức toán học</th><th>Ghi chú</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>pipe(f, g, h)</code></td>
+        <td><strong>Trái sang Phải (Left-to-Right)</strong></td>
+        <td>$h(g(f(x)))$</td>
+        <td>Tự nhiên theo dòng đọc mã nguồn của con người.</td>
+      </tr>
+      <tr>
+        <td><code>compose(f, g, h)</code></td>
+        <td><strong>Phải sang Trái (Right-to-Left)</strong></td>
+        <td>$f(g(h(x)))$</td>
+        <td>Chuẩn ký hiệu hàm hợp toán học $(f \circ g \circ h)(x)$ (Redux middleware).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt pipe và compose bằng Array.prototype.reduce</span>
+    <pre><code><span class="cmt">// pipe: Trái -> Phải (Reduce từ đầu đến cuối)</span>
+<span class="kw">function</span> <span class="fn">pipe</span>(...fns) {
+  <span class="kw">return function</span> (...initialArgs) {
+    <span class="kw">if</span> (fns.length === <span class="num">0</span>) <span class="kw">return</span> initialArgs[<span class="num">0</span>];
+    <span class="kw">const</span> [firstFn, ...restFns] = fns;
+    <span class="kw">return</span> restFns.<span class="fn">reduce</span>((acc, fn) => <span class="fn">fn</span>(acc), <span class="fn">firstFn</span>(...initialArgs));
+  };
+}
+
+<span class="cmt">// compose: Phải -> Trái (Reduce từ cuối về đầu)</span>
+<span class="kw">function</span> <span class="fn">compose</span>(...fns) {
+  <span class="kw">return function</span> (...initialArgs) {
+    <span class="kw">if</span> (fns.length === <span class="num">0</span>) <span class="kw">return</span> initialArgs[<span class="num">0</span>];
+    <span class="kw">const</span> reversed = [...fns].<span class="fn">reverse</span>();
+    <span class="kw">const</span> [firstFn, ...restFns] = reversed;
+    <span class="kw">return</span> restFns.<span class="fn">reduce</span>((acc, fn) => <span class="fn">fn</span>(acc), <span class="fn">firstFn</span>(...initialArgs));
+  };
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 3: ASYNC PIPELINE -->
+  <h2>3. Mở rộng: Async Pipeline (<code>pipeAsync</code>)</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; pipeAsync hỗ trợ Promise</span>
+    <pre><code><span class="kw">function</span> <span class="fn">pipeAsync</span>(...fns) {
+  <span class="kw">return function</span> (...initialArgs) {
+    <span class="kw">return</span> fns.<span class="fn">reduce</span>(<span class="kw">async</span> (accPromise, fn) => {
+      <span class="kw">const</span> acc = <span class="kw">await</span> accPromise;
+      <span class="kw">return</span> <span class="fn">fn</span>(acc);
+    }, Promise.<span class="fn">resolve</span>(fns.length > <span class="num">0</span> ? fns[<span class="num">0</span>](...initialArgs) : initialArgs[<span class="num">0</span>]));
+  };
+}
+
+<span class="cmt">// Sử dụng: Pipeline xác thực & xử lý user</span>
+<span class="kw">const</span> processOrder = <span class="fn">pipeAsync</span>(
+  validateCart,     <span class="cmt">// async (cart) => validCart</span>
+  calculateTotal,   <span class="cmt">// (validCart) => total</span>
+  chargeCreditCard, <span class="cmt">// async (total) => receipt</span>
+  sendConfirmation  <span class="cmt">// async (receipt) => emailStatus</span>
+);</code></pre>
+  </div>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Cho <code>const fn = pipe(x => x + 2, x => x * 3); fn(4)</code>. Kết quả là bao nhiêu ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! pipe chạy từ trái sang phải: (4 + 2) = 6 -> 6 * 3 = 18.">A. 18</button>
+    <button class="opt" data-correct="false" data-explain="Sai! 14 là kết quả của compose (4 * 3 + 2 = 14), còn pipe chạy từ trái sang phải.">B. 14</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. 24</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Trong cài đặt EventEmitter, tại sao cần clone mảng listeners <code>const listeners = [...this.events.get(eventName)]</code> trước khi duyệt gọi ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Nếu một listener gọi .off() hoặc .once() trong thân hàm của nó, mảng gốc sẽ bị splice thay đổi độ dài, khiến vòng lặp for bị nhảy cóc bỏ sót listener tiếp theo.">A. Để ngăn ngừa lỗi nhảy cóc (mutation) nếu có listener tự hủy (.off/.once) ngay trong lúc emit</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Phép clone không liên quan đến multi-thread trong môi trường single-thread của JS.">B. Để hỗ trợ multi-threading</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Clone mảng tốn thêm một lượng nhỏ bộ nhớ nhưng là bắt buộc cho tính toàn vẹn.">C. Để tăng tốc độ thực thi</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 5: CHECKLIST -->
+  <h2>5. Checklist tự kiểm chứng — Bài 25</h2>
+  <div class="checklist">
+    <div>&#9989; Tự tay code lớp <code>EventEmitter</code> với <code>on</code>, <code>off</code>, <code>emit</code>, <code>once</code> và <code>unsubscribe</code>.</div>
+    <div>&#9989; Hiểu lý do phải clone mảng listener trước khi dispatch event.</div>
+    <div>&#9989; Cài đặt và phân biệt chính xác thứ tự thực thi của <code>pipe</code> vs <code>compose</code>.</div>
+    <div>&#9989; Tự tin xây dựng <code>pipeAsync</code> xử lý luồng dữ liệu Promise.</div>
+    <div>&#9989; Toàn bộ 26 test suites (163/163 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo trong Module 06</div>
+    <div class="nt">Bài 26 · Live-coding: Memoize function &amp; LRU Cache implementation</div>
+    <p class="nd">Kỹ thuật tối ưu hóa bộ nhớ đệm (Caching): Xây dựng hàm Memoize cho Pure Functions và cài đặt cấu trúc dữ liệu LRU Cache kết hợp Map / Doubly Linked List.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0024-deep-clone.html">&#8592; Bài 24</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0026-memoize-lru-cache.html">Bài 26 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test EventEmitter &amp; compose và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

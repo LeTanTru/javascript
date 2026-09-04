@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 06 · Functional Programming &amp; Utility Polyfills</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 06 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 06 : Functional Programming &amp; Utility Polyfills</h1>
+  <p class="subtitle">Bản đồ tư duy cô đọng toàn bộ 10 bài toán Live-coding &amp; Utility Polyfills kinh điển trong mọi vòng phỏng vấn kỹ thuật từ Bài 22 đến Bài 27.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm vững trọn bộ mã nguồn chuẩn Senior của Curry, Debounce, Throttle, deepClone, EventEmitter, pipe/compose, LRUCache, flatten và deepEqual.</p>
+
+  <!-- TRỤC 1: SO SÁNH CÁC UTILITY CHỦ CHỐT -->
+  <h2>1. Ma trận so sánh các cặp kỹ thuật song hành</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <h3>Currying vs Partial Application</h3>
+      <p><strong>Currying :</strong> $f(a, b, c) \rightarrow f(a)(b)(c)$ (Biến đổi thành chuỗi hàm unary 1 tham số đến khi đủ arity <code>fn.length</code>).</p>
+      <p><strong>Partial Application :</strong> Cố định $K$ tham số trước, trả về hàm nhận toàn bộ $N - K$ tham số còn lại trong 1 lần gọi tiếp theo (tương tự <code>bind</code>).</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>Debounce vs Throttle</h3>
+      <p><strong>Debounce :</strong> Reset timer liên tục, gom chuỗi sự kiện thành 1 lần gọi sau khi người dùng ngừng thao tác (Typeahead, Resize, Auto-save).</p>
+      <p><strong>Throttle :</strong> Nhịp cố định, chỉ thực thi tối đa 1 lần trong mỗi chu kỳ <code>wait</code> ms (Scroll, Drag, Button Click chống spam).</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>deepClone vs structuredClone</h3>
+      <p><strong>deepClone :</strong> Xử lý Circular References qua <code>WeakMap</code>, giữ nguyên Symbol keys và Function/Methods.</p>
+      <p><strong>structuredClone :</strong> API trình duyệt tích hợp sẵn, nhưng ném <code>DataCloneError</code> nếu chứa Function hoặc DOM Nodes.</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>pipe vs compose</h3>
+      <p><strong>pipe(f, g, h) :</strong> Trái sang Phải (Left-to-Right: $h(g(f(x)))$) theo chiều đọc mã nguồn tự nhiên.</p>
+      <p><strong>compose(f, g, h) :</strong> Phải sang Trái (Right-to-Left: $f(g(h(x)))$) theo chuẩn hàm hợp Toán học.</p>
+    </div>
+  </div>
+
+  <!-- TRỤC 2: MÃ NGUỒN POLYFILLS CHUẨN SENIOR -->
+  <h2>2. Bộ mã nguồn 7 Utility Polyfills mẫu (Senior Cheat-Sheet)</h2>
+
+  <!-- CODE 1: CURRY -->
+  <div class="code-block">
+    <span class="code-label">1. curry() — Tự động tích lũy tham số &amp; bảo toàn this</span>
+    <pre><code><span class="kw">function</span> <span class="fn">curry</span>(fn) {
+  <span class="kw">return function</span> <span class="fn">curried</span>(...args) {
+    <span class="kw">if</span> (args.length >= fn.length) <span class="kw">return</span> fn.<span class="fn">apply</span>(<span class="kw">this</span>, args);
+    <span class="kw">return function</span> (...nextArgs) {
+      <span class="kw">return</span> curried.<span class="fn">apply</span>(<span class="kw">this</span>, args.<span class="fn">concat</span>(nextArgs));
+    }.<span class="fn">bind</span>(<span class="kw">this</span>);
+  };
+}</code></pre>
+  </div>
+
+  <!-- CODE 2: DEBOUNCE -->
+  <div class="code-block">
+    <span class="code-label">2. debounce() — Hỗ trợ Leading, Trailing, .cancel()</span>
+    <pre><code><span class="kw">function</span> <span class="fn">debounce</span>(fn, wait, { leading = <span class="kw">false</span>, trailing = <span class="kw">true</span> } = {}) {
+  <span class="kw">let</span> timerId = <span class="kw">null</span>, lastArgs = <span class="kw">null</span>, lastThis = <span class="kw">null</span>, result;
+  <span class="kw">const</span> <span class="fn">invoke</span> = () => {
+    <span class="kw">if</span> (lastArgs) { result = fn.<span class="fn">apply</span>(lastThis, lastArgs); lastArgs = lastThis = <span class="kw">null</span>; }
+    <span class="kw">return</span> result;
+  };
+  <span class="kw">const</span> <span class="fn">debounced</span> = <span class="kw">function</span>(...args) {
+    lastArgs = args; lastThis = <span class="kw">this</span>;
+    <span class="kw">const</span> isLeading = leading && timerId === <span class="kw">null</span>;
+    <span class="kw">if</span> (timerId) <span class="fn">clearTimeout</span>(timerId);
+    timerId = <span class="fn">setTimeout</span>(() => { timerId = <span class="kw">null</span>; <span class="kw">if</span> (trailing && !isLeading) <span class="fn">invoke</span>(); }, wait);
+    <span class="kw">if</span> (isLeading) <span class="fn">invoke</span>();
+    <span class="kw">return</span> result;
+  };
+  debounced.<span class="fn">cancel</span> = () => { <span class="kw">if</span> (timerId) <span class="fn">clearTimeout</span>(timerId); timerId = lastArgs = lastThis = <span class="kw">null</span>; };
+  <span class="kw">return</span> debounced;
+}</code></pre>
+  </div>
+
+  <!-- CODE 3: THROTTLE -->
+  <div class="code-block">
+    <span class="code-label">3. throttle() — Kết hợp Timestamp &amp; Timer</span>
+    <pre><code><span class="kw">function</span> <span class="fn">throttle</span>(fn, wait, { leading = <span class="kw">true</span>, trailing = <span class="kw">true</span> } = {}) {
+  <span class="kw">let</span> timerId = <span class="kw">null</span>, lastArgs = <span class="kw">null</span>, lastThis = <span class="kw">null</span>, lastCallTime = <span class="num">0</span>, result;
+  <span class="kw">const</span> <span class="fn">invoke</span> = (time) => {
+    lastCallTime = time;
+    <span class="kw">if</span> (lastArgs) { result = fn.<span class="fn">apply</span>(lastThis, lastArgs); lastArgs = lastThis = <span class="kw">null</span>; }
+    <span class="kw">return</span> result;
+  };
+  <span class="kw">return function</span>(...args) {
+    <span class="kw">const</span> now = Date.<span class="fn">now</span>();
+    lastArgs = args; lastThis = <span class="kw">this</span>;
+    <span class="kw">if</span> (lastCallTime === <span class="num">0</span> && !leading) lastCallTime = now;
+    <span class="kw">const</span> rem = wait - (now - lastCallTime);
+    <span class="kw">if</span> (rem <= <span class="num">0</span> || rem > wait) {
+      <span class="kw">if</span> (timerId) { <span class="fn">clearTimeout</span>(timerId); timerId = <span class="kw">null</span>; }
+      <span class="fn">invoke</span>(now);
+    } <span class="kw">else if</span> (!timerId && trailing) {
+      timerId = <span class="fn">setTimeout</span>(() => { timerId = <span class="kw">null</span>; lastCallTime = leading ? Date.<span class="fn">now</span>() : <span class="num">0</span>; <span class="fn">invoke</span>(Date.<span class="fn">now</span>()); }, rem);
+    }
+    <span class="kw">return</span> result;
+  };
+}</code></pre>
+  </div>
+
+  <!-- CODE 4: DEEP CLONE -->
+  <div class="code-block">
+    <span class="code-label">4. deepClone() — WeakMap, Date, RegExp, Map, Set &amp; Symbols</span>
+    <pre><code><span class="kw">function</span> <span class="fn">deepClone</span>(val, hash = <span class="kw">new</span> <span class="fn">WeakMap</span>()) {
+  <span class="kw">if</span> (val === <span class="kw">null</span> || <span class="kw">typeof</span> val !== <span class="str">'object'</span>) <span class="kw">return</span> val;
+  <span class="kw">if</span> (val <span class="kw">instanceof</span> Date) <span class="kw">return new</span> <span class="fn">Date</span>(val.<span class="fn">getTime</span>());
+  <span class="kw">if</span> (val <span class="kw">instanceof</span> RegExp) <span class="kw">return new</span> <span class="fn">RegExp</span>(val.source, val.flags);
+  <span class="kw">if</span> (hash.<span class="fn">has</span>(val)) <span class="kw">return</span> hash.<span class="fn">get</span>(val);
+  <span class="kw">if</span> (val <span class="kw">instanceof</span> Map) {
+    <span class="kw">const</span> m = <span class="kw">new</span> <span class="fn">Map</span>(); hash.<span class="fn">set</span>(val, m);
+    val.<span class="fn">forEach</span>((v, k) => m.<span class="fn">set</span>(<span class="fn">deepClone</span>(k, hash), <span class="fn">deepClone</span>(v, hash)));
+    <span class="kw">return</span> m;
+  }
+  <span class="kw">if</span> (val <span class="kw">instanceof</span> Set) {
+    <span class="kw">const</span> s = <span class="kw">new</span> <span class="fn">Set</span>(); hash.<span class="fn">set</span>(val, s);
+    val.<span class="fn">forEach</span>((v) => s.<span class="fn">add</span>(<span class="fn">deepClone</span>(v, hash)));
+    <span class="kw">return</span> s;
+  }
+  <span class="kw">const</span> res = Array.<span class="fn">isArray</span>(val) ? [] : Object.<span class="fn">create</span>(Object.<span class="fn">getPrototypeOf</span>(val));
+  hash.<span class="fn">set</span>(val, res);
+  <span class="kw">for</span> (<span class="kw">const</span> k <span class="kw">of</span> Reflect.<span class="fn">ownKeys</span>(val)) {
+    <span class="kw">const</span> desc = Object.<span class="fn">getOwnPropertyDescriptor</span>(val, k);
+    <span class="kw">if</span> (desc && desc.enumerable) res[k] = <span class="fn">deepClone</span>(val[k], hash);
+  }
+  <span class="kw">return</span> res;
+}</code></pre>
+  </div>
+
+  <!-- CODE 5: LRU CACHE -->
+  <div class="code-block">
+    <span class="code-label">5. LRUCache — O(1) qua Map Insertion-Order</span>
+    <pre><code><span class="kw">class</span> <span class="fn">LRUCache</span> {
+  <span class="fn">constructor</span>(capacity) { <span class="kw">this</span>.cap = capacity; <span class="kw">this</span>.map = <span class="kw">new</span> <span class="fn">Map</span>(); }
+  <span class="fn">get</span>(key) {
+    <span class="kw">if</span> (!<span class="kw">this</span>.map.<span class="fn">has</span>(key)) <span class="kw">return undefined</span>;
+    <span class="kw">const</span> val = <span class="kw">this</span>.map.<span class="fn">get</span>(key);
+    <span class="kw">this</span>.map.<span class="fn">delete</span>(key); <span class="kw">this</span>.map.<span class="fn">set</span>(key, val); <span class="cmt">// Đưa lên MRU</span>
+    <span class="kw">return</span> val;
+  }
+  <span class="fn">put</span>(key, val) {
+    <span class="kw">if</span> (<span class="kw">this</span>.map.<span class="fn">has</span>(key)) <span class="kw">this</span>.map.<span class="fn">delete</span>(key);
+    <span class="kw">else if</span> (<span class="kw">this</span>.map.size >= <span class="kw">this</span>.cap) <span class="kw">this</span>.map.<span class="fn">delete</span>(<span class="kw">this</span>.map.<span class="fn">keys</span>().<span class="fn">next</span>().value);
+    <span class="kw">this</span>.map.<span class="fn">set</span>(key, val);
+  }
+}</code></pre>
+  </div>
+
+  <!-- CODE 6: DEEP EQUAL -->
+  <div class="code-block">
+    <span class="code-label">6. deepEqual() — Toàn diện Primitives, Objects, Arrays, Dates, Symbols</span>
+    <pre><code><span class="kw">function</span> <span class="fn">deepEqual</span>(a, b) {
+  <span class="kw">if</span> (Object.<span class="fn">is</span>(a, b)) <span class="kw">return true</span>;
+  <span class="kw">if</span> (!a || <span class="kw">typeof</span> a !== <span class="str">'object'</span> || !b || <span class="kw">typeof</span> b !== <span class="str">'object'</span>) <span class="kw">return false</span>;
+  <span class="kw">if</span> (a.constructor !== b.constructor) <span class="kw">return false</span>;
+  <span class="kw">if</span> (a <span class="kw">instanceof</span> Date) <span class="kw">return</span> a.<span class="fn">getTime</span>() === b.<span class="fn">getTime</span>();
+  <span class="kw">if</span> (a <span class="kw">instanceof</span> RegExp) <span class="kw">return</span> a.source === b.source && a.flags === b.flags;
+  <span class="kw">const</span> kA = Reflect.<span class="fn">ownKeys</span>(a), kB = Reflect.<span class="fn">ownKeys</span>(b);
+  <span class="kw">if</span> (kA.length !== kB.length) <span class="kw">return false</span>;
+  <span class="kw">for</span> (<span class="kw">const</span> k <span class="kw">of</span> kA) {
+    <span class="kw">if</span> (!Object.prototype.hasOwnProperty.<span class="fn">call</span>(b, k) || !<span class="fn">deepEqual</span>(a[k], b[k])) <span class="kw">return false</span>;
+  }
+  <span class="kw">return true</span>;
+}</code></pre>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0027-flatten-deep-equal.html">&#8592; Bài 27</a>
+    <a href="../lessons/index.html">&#127968; Mục lục khóa học</a>
+    <a href="../lessons/0028-critical-rendering-path.html" class="disabled">Module 07 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh:</strong> Hãy lưu trang này để ôn luyện trước các buổi phỏng vấn kỹ thuật hoặc in ra (Ctrl + P) để ôn tập offline bất kỳ lúc nào !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

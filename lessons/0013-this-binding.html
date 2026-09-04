@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 13 · 4 Quy tắc xác định this (Default, Implicit, Explicit, New) &amp; Strict Mode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 04 · Bài 13 (Khởi đầu Module 04)</span>
+  <h1>Bài 13 · 4 Quy tắc vàng xác định <code>this</code> &amp; Sự thay đổi trong Strict Mode</h1>
+  <p class="subtitle">Chấm dứt mọi mơ hồ về từ khóa bí ẩn nhất JavaScript: quy luật Call-site, thang bậc ưu tiên 4 quy tắc binding và bẫy mất liên kết ngầm định (Implicit Binding Loss) trong callbacks.</p>
+  <p class="meta-line">&#9203; ~18 phút &middot; &#127919; Mục tiêu: Nắm vững thang đo ưu tiên của this, giải thích chính xác sự khác biệt giữa Strict Mode và Non-strict Mode, và xử lý dứt điểm các lỗi mất context trong thực tế.</p>
+
+  <!-- BẮC CẦU TỪ MODULE 03 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Module 03</div>
+    <p>Ở Module 02 và 03, chúng ta đã phân biệt rõ: <strong>Scope Chain</strong> được xác định tĩnh tại thời điểm viết mã (Lexical Scope). Nhưng đối với từ khóa <strong><code>this</code></strong>, JavaScript lại vận hành theo một quy luật hoàn toàn ngược lại.</p>
+    <p><code>this</code> hoàn toàn <strong>KHÔNG PHỤ THUỘC</strong> vào nơi hàm được khai báo, mà phụ thuộc 100% vào <strong>vị trí và cách thức hàm được GỌI (Call-site)</strong> ! Hiểu rõ 4 quy tắc binding là nền tảng để bạn làm chủ mọi thư viện, UI component và vượt qua mọi câu hỏi phỏng vấn hóc búa về output code.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Bảng thang bậc ưu tiên 4 quy tắc xác định <code>this</code></h2>
+  <p>Khi một hàm thông thường được kích hoạt, JavaScript Engine duyệt qua thang đo ưu tiên từ cao xuống thấp (từ 1 đến 4) để xác định giá trị của <code>this</code> :</p>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Thứ bậc ưu tiên</th>
+        <th>Quy tắc Binding</th>
+        <th>Cú pháp kích hoạt tại Call-site</th>
+        <th>Giá trị của `this`</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1 (Cao nhất)</strong></td>
+        <td><strong>New Binding</strong></td>
+        <td><code>new Fn()</code></td>
+        <td>Trỏ tới <strong>instance đối tượng mới</strong> vừa được khởi tạo bởi Engine trên Heap.</td>
+      </tr>
+      <tr>
+        <td><strong>2</strong></td>
+        <td><strong>Explicit Binding</strong></td>
+        <td><code>fn.call(ctx)</code>, <code>fn.apply(ctx)</code>, <code>fn.bind(ctx)</code></td>
+        <td>Trỏ tới <strong>đối tượng context</strong> được lập trình viên chỉ định tường minh.</td>
+      </tr>
+      <tr>
+        <td><strong>3</strong></td>
+        <td><strong>Implicit Binding</strong></td>
+        <td><code>obj.fn()</code></td>
+        <td>Trỏ tới <strong>đối tượng chứa ngay trước dấu chấm</strong> (Calling Object / Context).</td>
+      </tr>
+      <tr>
+        <td><strong>4 (Thấp nhất)</strong></td>
+        <td><strong>Default Binding</strong></td>
+        <td><code>fn()</code> (Hàm gọi trần độc lập)</td>
+        <td>
+          - <strong>Strict Mode:</strong> <code>undefined</code>.<br>
+          - <strong>Non-strict Mode:</strong> <code>window</code> (browser) hoặc <code>global</code> (Node.js).
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Phân tích chi tiết từng quy tắc &amp; Strict Mode</h2>
+
+  <h3>2.1. Quy tắc 1: Default Binding &amp; Vai trò cứu mạng của Strict Mode</h3>
+  <p>Khi hàm được gọi độc lập không có dấu chấm và không có <code>new</code> hay <code>call/apply</code>, Engine áp dụng quy tắc mặc định :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Default Binding</span>
+    <pre><code><span class="kw">function</span> <span class="fn">showContext</span>() {
+  console.<span class="fn">log</span>(<span class="kw">this</span>);
+}
+
+<span class="cmt">// Trong Non-Strict Mode:</span>
+<span class="fn">showContext</span>(); <span class="cmt">// &#8594; window (Trình duyệt) hoặc global (Node.js)</span>
+
+<span class="cmt">// Trong Strict Mode ("use strict" hoặc ES Module):</span>
+<span class="kw">function</span> <span class="fn">strictShow</span>() {
+  <span class="str">"use strict"</span>;
+  console.<span class="fn">log</span>(<span class="kw">this</span>);
+}
+<span class="fn">strictShow</span>(); <span class="cmt">// &#8594; undefined !</span></code></pre>
+  </div>
+
+  <div class="callout why">
+    <div class="ct">&#128161; Tại sao Strict Mode lại gán this = undefined ?</div>
+    <p>Trong non-strict mode thời kỳ đầu của JavaScript, nếu bạn viết <code>this.count = 0</code> bên trong một hàm gọi trần, bạn sẽ <strong>vô tình tạo ra một thuộc tính toàn cục <code>window.count</code></strong> ! Đây là nguyên nhân gây ô nhiễm bộ nhớ và xung đột biến kinh hoàng. Strict Mode thiết lập <code>this = undefined</code> để nếu bạn lỡ truy cập <code>this.count</code>, Engine lập tức ném lỗi <code>TypeError: Cannot set property of undefined</code>, giúp lập trình viên bắt ngay bug từ sớm.</p>
+  </div>
+
+  <h3>2.2. Quy tắc 2: Implicit Binding &amp; Bẫy mất liên kết (Implicit Binding Loss)</h3>
+  <p>Khi hàm được gọi thông qua một đối tượng (<code>obj.method()</code>), <code>this</code> trỏ về <code>obj</code>. Tuy nhiên, liên kết này rất lỏng lẻo và dễ bị "rơi rụng" :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Hiện tượng mất liên kết Implicit</span>
+    <pre><code><span class="kw">const</span> person = {
+  name: <span class="str">"Hoàng"</span>,
+  <span class="fn">getName</span>() {
+    <span class="kw">return this</span>.name;
+  }
+};
+
+<span class="cmt">// Trường hợp 1: Gọi qua dấu chấm &#8594; Implicit Binding</span>
+console.<span class="fn">log</span>(person.<span class="fn">getName</span>()); <span class="cmt">// &#8594; "Hoàng"</span>
+
+<span class="cmt">// Trường hợp 2: Gán hàm sang một biến khác &#8594; MẤT LIÊN KẾT !</span>
+<span class="kw">const</span> fn = person.getName;
+console.<span class="fn">log</span>(<span class="fn">fn</span>()); <span class="cmt">// &#8594; undefined (rơi về Default Binding !)</span>
+
+<span class="cmt">// Trường hợp 3: Truyền làm callback trong setTimeout / Event Listener</span>
+setTimeout(person.getName, <span class="num">100</span>); <span class="cmt">// &#8594; undefined (Callback được Web API gọi trần !)</span></code></pre>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. So sánh cuộc chiến ưu tiên: New vs Hard Binding</h2>
+  <p>Một câu hỏi phỏng vấn kinh điển: <em>"Nếu một hàm vừa được <code>bind()</code> cứng vào context A, nhưng lại được gọi với từ khóa <code>new</code>, thì <code>this</code> sẽ trỏ về A hay trỏ về instance mới ?"</em></p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cuộc chiến giữa new và bind</span>
+    <pre><code><span class="kw">function</span> <span class="fn">User</span>(name) {
+  <span class="kw">this</span>.name = name;
+}
+
+<span class="kw">const</span> forcedContext = { name: <span class="str">"Context Cố Định"</span> };
+<span class="kw">const</span> BoundUser = User.<span class="fn">bind</span>(forcedContext);
+
+<span class="kw">const</span> instance = <span class="kw">new</span> <span class="fn">BoundUser</span>(<span class="str">"Đối tượng mới"</span>);
+
+console.<span class="fn">log</span>(instance.name);      <span class="cmt">// &#8594; "Đối tượng mới" !</span>
+console.<span class="fn">log</span>(forcedContext.name); <span class="cmt">// &#8594; "Context Cố Định" (Không hề bị thay đổi)</span></code></pre>
+  </div>
+
+  <p><strong>Kết luận :</strong> <strong><code>new</code> Binding có độ ưu tiên cao hơn Hard Binding (<code>bind</code>)</strong> ! Toán tử <code>new</code> có quyền năng tối thượng ghi đè lên context đã bị khóa bởi <code>bind()</code> để đảm bảo instance mới luôn được tạo ra với danh tính riêng biệt.</p>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Nêu 4 bước xác định `this` khi đọc một đoạn code bất kỳ ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Để xác định `this`, ta luôn nhìn vào **Call-site (vị trí gọi hàm)** và áp dụng thang 4 câu hỏi:
+    1. Hàm có được gọi với `new` không? &rarr; Nếu có, `this` là instance mới.
+    2. Hàm có được gọi với `call`, `apply` hoặc `bind` không? &rarr; Nếu có, `this` là context chỉ định.
+    3. Hàm có được gọi qua đối tượng sở hữu (dấu chấm `obj.fn()`) không? &rarr; Nếu có, `this` là `obj`.
+    4. Nếu không thỏa mãn cả 3 điều trên &rarr; Rơi về Default Binding: `undefined` trong strict mode, hoặc `global/window` trong non-strict mode."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Làm thế nào để khắc phục hiện tượng mất liên kết context khi truyền phương thức vào callback của setTimeout hoặc DOM Event Listener ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Có 3 cách phổ biến: (1) Dùng `Function.prototype.bind`: `setTimeout(obj.fn.bind(obj), 100)`; (2) Bọc trong một Arrow Function: `setTimeout(() => obj.fn(), 100)` vì arrow function kế thừa lexical this từ môi trường xung quanh; (3) Sử dụng ES Class Fields với arrow function: `fn = () => { ... }` gắn trực tiếp vào instance."</em></p>
+  </div>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code sau in ra kết quả gì trong môi trường Strict Mode ?<br>
+    <code>const obj = { x: 42, getX() { return this.x; } }; const f = obj.getX; console.log(f());</code></div>
+    <button class="opt" data-correct="false" data-explain="Sai! Khi gán sang biến f, liên kết ngầm định với obj bị phá vỡ.">A. 42</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Trong strict mode, this là undefined nên cố đọc this.x sẽ ném lỗi chứ không trả về undefined.">B. undefined</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! f() được gọi trần nên áp dụng Default Binding trong strict mode (this === undefined). Thao tác đọc undefined.x ném ra ngoại lệ TypeError: Cannot read properties of undefined.">C. TypeError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Giữa 'new Binding' và 'Hard Binding' (tạo bởi fn.bind()), quy tắc nào có độ ưu tiên cao hơn ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Toán tử new có độ ưu tiên cao nhất, có khả năng ghi đè cả hard binding của bind() để khởi tạo instance mới.">A. new Binding có độ ưu tiên cao hơn.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! bind() không thể ngăn cản từ khóa new.">B. Hard Binding có độ ưu tiên cao hơn.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Thứ tự ưu tiên là hoàn toàn xác định trong đặc tả ECMAScript.">C. Ngang nhau, phụ thuộc vào thứ tự gọi code.</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Thuộc lòng thang bậc 4 quy tắc ưu tiên xác định <code>this</code>.</div>
+    <div>&#9989; Hiểu rõ vai trò phòng vệ chống ô nhiễm biến toàn cục của Strict Mode với <code>this = undefined</code>.</div>
+    <div>&#9989; Nhận diện và xử lý thành thạo lỗi mất liên kết ngầm định (Implicit Binding Loss) trong callbacks.</div>
+    <div>&#9989; Chứng minh được <code>new Binding</code> có độ ưu tiên tối thượng vượt qua cả <code>bind()</code>.</div>
+    <div>&#9989; Toàn bộ 90 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 14 :</div>
+    <p>4 quy tắc binding trên áp dụng chặt chẽ cho các Regular Function thông thường. Nhưng khi ES6 ra mắt <strong>Arrow Functions (Hàm mũi tên)</strong>, toàn bộ các quy tắc trên dường như bị đảo lộn.</p>
+    <p><em>"Tại sao gọi <code>arrowFn.call(ctx)</code> hay <code>new arrowFn()</code> lại không thể thay đổi được <code>this</code> của nó ? <strong>Lexical `this`</strong> thực chất là gì dưới tầng Engine, và tại sao Arrow Function lại bị tước bỏ <code>arguments</code>, <code>prototype</code> và <code>[[Construct]]</code> ?"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 14 · Arrow Functions &amp; Lexical `this` (Tại sao không có `arguments`, `prototype`, `new`)</div>
+    <p class="nd">Giải mã cơ chế kế thừa lexical context của Arrow Function, so sánh hiệu năng với Regular Function và các bẫy chết người khi dùng trong Object Methods.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0012-proxy-reflect-reactivity.html">&#8592; Bài 12</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để xem 6 bài test của Bài 13 và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

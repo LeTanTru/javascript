@@ -196,6 +196,23 @@ _Avoid_: Hook, middleware, event handler
 Mô hình lập trình khai báo trong đó giao diện hoặc các phép tính toán phụ thuộc (effects) tự động cập nhật phản ánh sự thay đổi của trạng thái dữ liệu (state). Trong kiến trúc hiện đại (Vue 3, Signals), Reactivity được xây dựng dựa trên `Proxy` (bẫy `get` để track dependency, bẫy `set` để trigger effects).
 _Avoid_: Two-way binding, auto-update
 
+**Default Binding**:
+Quy tắc xác định `this` khi một hàm được kích hoạt độc lập không qua đối tượng sở hữu hay cú pháp ràng buộc nào. Trong Strict Mode, `this` nhận giá trị `undefined`; trong Non-strict Mode, `this` trỏ tới Global Object (`window`/`global`).
+_Avoid_: Global binding, fallback this
+
+**Implicit Binding**:
+Quy tắc xác định `this` khi một phương thức được kích hoạt thông qua đối tượng sở hữu (dấu chấm `obj.fn()`). Lúc này `this` được ngầm định trỏ tới chính đối tượng đứng ngay trước dấu chấm tại Call-site. Dễ bị mất liên kết (Implicit Binding Loss) khi truyền callback.
+_Avoid_: Object this, method context
+
+**Explicit Binding**:
+Quy tắc ép buộc `this` trỏ tới một đối tượng context chỉ định tường minh thông qua các phương thức `Function.prototype.call`, `apply`, hoặc `bind` (Hard Binding).
+_Avoid_: Forced this, manual context
+
+**New Binding**:
+Quy tắc xác định `this` khi một hàm constructor được kích hoạt với từ khóa `new`. `this` được Engine tự động gán vào instance đối tượng mới vừa được tạo trên Memory Heap. Có độ ưu tiên cao hơn cả Hard Binding.
+_Avoid_: Constructor this, class binding
+
+
 
 
 

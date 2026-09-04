@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 34 · Garbage Collection trong V8 &amp; Quản lý bộ nhớ với WeakMap, WeakSet, WeakRef</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 08 · Bài 34 (Hoàn tất Module 08)</span>
+  <h1>Bài 34 · Garbage Collection trong V8 &amp; Quản lý bộ nhớ với <code>WeakMap</code>, <code>WeakSet</code>, <code>WeakRef</code></h1>
+  <p class="subtitle">Hiểu tường tận cơ chế dọn rác tự động của V8 Engine: Giả thuyết thế hệ (Generational Hypothesis), thuật toán Scavenge (Minor GC) vs Mark-Sweep-Compact (Major GC), các bẫy Memory Leaks kinh điển và công cụ quản lý tham chiếu yếu hiện đại (WeakRef, FinalizationRegistry).</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Nắm vững cấu trúc V8 Memory Heap (New Space, Old Space), phân biệt Minor GC vs Major GC, phát hiện &amp; khắc phục 4 loại Memory Leak phổ biến, và sử dụng thành thạo WeakMap, WeakRef, FinalizationRegistry.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 33 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 33</div>
+    <p>Ở Bài 33, bạn đã biết cách V8 tổ chức thuộc tính trong bộ nhớ RAM qua <strong>Hidden Classes (Shapes)</strong>. Khi các object được sinh ra liên tục trong quá trình chạy ứng dụng, làm sao V8 phát hiện và giải phóng các object không còn dùng tới để tránh tràn RAM? Đó là sứ mệnh của <strong>Garbage Collector (Bộ thu gom rác)</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1: GENERATIONAL HYPOTHESIS & CẤU TRÚC V8 HEAP -->
+  <h2>1. Giả thuyết thế hệ &amp; Phân vùng V8 Memory Heap</h2>
+  <p>Bộ thu gom rác của V8 được thiết kế dựa trên <strong>The Generational Hypothesis (Giả thuyết thế hệ)</strong>: <em>"Hầu hết các đối tượng trong chương trình đều chết rất trẻ (vừa tạo ra đã hết giá trị sử dụng ngay sau khi hàm kết thúc)."</em></p>
+
+  <table class="data">
+    <thead>
+      <tr><th>Phân vùng Heap</th><th>Kích thước</th><th>Loại Garbage Collector</th><th>Giải thuật dọn dẹp</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>New Space (Young Generation)</strong></td>
+        <td>Nhỏ (1MB &ndash; 64MB)</td>
+        <td><strong>Minor GC (Scavenger)</strong></td>
+        <td><strong>Cheney's Copying Algorithm</strong>: Chia thành 2 semi-spaces (From-Space &amp; To-Space). Sao chép object sống sang To-Space, giải phóng toàn bộ From-Space. Cực nhanh (1ms).</td>
+      </tr>
+      <tr>
+        <td><strong>Old Space (Old Generation)</strong></td>
+        <td>Lớn (hàng trăm MB &ndash; vài GB)</td>
+        <td><strong>Major GC (Full Mark-Compact)</strong></td>
+        <td><strong>Mark-Sweep-Compact</strong> (Orinoco project):<br>
+        1. <em>Marking</em>: Đánh dấu từ GC Roots (Window, Stack, DOM).<br>
+        2. <em>Sweeping</em>: Thu hồi các ô nhớ không được đánh dấu.<br>
+        3. <em>Compacting</em>: Dồn các object còn sống lại sát nhau để chống phân mảnh bộ nhớ.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2: 4 BẪY MEMORY LEAKS KINH ĐIỂN -->
+  <h2>2. Bốn loại Memory Leaks phổ biến nhất trong JavaScript</h2>
+  <ul>
+    <li><strong>1. Biến Global vô tình tạo ra :</strong> Quên từ khóa <code>const/let</code> khiến biến bị gắn vào <code>window</code> (GC Roots) và không bao giờ bị thu hồi.</li>
+    <li><strong>2. Quên hủy Timers / Event Listeners :</strong> <code>setInterval</code> hoặc <code>addEventListener</code> giữ tham chiếu đến component sau khi đã unmount.</li>
+    <li><strong>3. Detached DOM Nodes :</strong> Giữ tham chiếu một thẻ HTML trong biến JavaScript sau khi đã xóa nó khỏi cây DOM (<code>document.body.removeChild</code>).</li>
+    <li><strong>4. Closures giữ thừa Scope :</strong> Hàm con vô tình lưu giữ một mảng dữ liệu khổng lồ của hàm cha ngoài ý muốn.</li>
+  </ul>
+
+  <!-- PHẦN 3: WEAKMAP, WEAKREF & FINALIZATION REGISTRY -->
+  <h2>3. Tham chiếu yếu: <code>WeakMap</code>, <code>WeakRef</code> &amp; <code>FinalizationRegistry</code></h2>
+  <p>Tham chiếu thông thường (Strong Reference) ngăn cản GC thu hồi đối tượng. <strong>Weak Reference (Tham chiếu yếu)</strong> cho phép bạn trỏ tới một object mà không ngăn cản GC thu gom nó khi mọi strong reference khác đã bị hủy :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Ứng dụng WeakRef &amp; FinalizationRegistry (ES2021+)</span>
+    <pre><code><span class="cmt">// 1. FinalizationRegistry: Đăng ký callback khi object bị thu hồi</span>
+<span class="kw">const</span> registry = <span class="kw">new</span> <span class="fn">FinalizationRegistry</span>((heldValue) => {
+  console.<span class="fn">log</span>(`[Dọn dẹp]: Object với ID "${heldValue}" đã bị GC dọn dẹp hoàn toàn!`);
+});
+
+<span class="kw">let</span> user = { id: <span class="num">101</span>, name: <span class="str">'Tru'</span> };
+registry.<span class="fn">register</span>(user, user.id);
+
+<span class="cmt">// 2. WeakRef: Tạo tham chiếu yếu đến user</span>
+<span class="kw">const</span> userWeakRef = <span class="kw">new</span> <span class="fn">WeakRef</span>(user);
+
+<span class="cmt">// Kiểm tra còn sống hay không qua deref()</span>
+console.<span class="fn">log</span>(userWeakRef.<span class="fn">deref</span>()?.name); <span class="cmt">// "Tru"</span>
+
+<span class="cmt">// Xóa Strong reference duy nhất</span>
+user = <span class="kw">null</span>;
+<span class="cmt">// Khi GC chạy, user bị xóa khỏi RAM, userWeakRef.deref() trả về undefined</span>
+<span class="cmt">// và callback của registry tự động kích hoạt!</span></code></pre>
+  </div>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Trong V8, khi một đối tượng trong New Space sống sót qua 2 chu kỳ dọn rác Minor GC, điều gì sẽ xảy ra với nó ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Đối tượng sẽ được Thăng cấp (Promoted) từ New Space sang Old Space để giải phóng không gian cho các đối tượng mới ngắn hạn.">A. Đối tượng được thăng cấp (Promoted) chuyển sang Old Space</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Nếu vẫn có thể tiếp cận từ GC Roots, object không bị xóa.">B. Đối tượng bị ép buộc xóa bỏ</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Đối tượng được chuyển sang Web Worker</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Tại sao WeakMap không hỗ trợ các phương thức lặp như .forEach(), .keys(), hay thuộc tính .size ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Vì thời điểm Garbage Collector dọn dẹp các object keys là không thể đoán trước (Non-deterministic). Nếu hỗ trợ .size hoặc lặp, kết quả sẽ thay đổi ngẫu nhiên phụ thuộc vào việc GC đã chạy hay chưa.">A. Vì GC có thể thu hồi các keys bất kỳ lúc nào, khiến số lượng phần tử là không xác định (Non-deterministic)</button>
+    <button class="opt" data-correct="false" data-explain="Sai! WeakMap là tính năng chuẩn ECMAScript từ ES2015.">B. Vì trình duyệt chưa kịp triển khai</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Để giảm dung lượng RAM của WeakMap</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 5: CHECKLIST & HOÀN TẤT MODULE 08 -->
+  <h2>5. Checklist tự kiểm chứng — Hoàn tất Module 08</h2>
+  <div class="checklist">
+    <div>&#9989; Giải thích <strong>Generational Hypothesis</strong> và phân biệt <strong>Minor GC vs Major GC</strong>.</div>
+    <div>&#9989; Nắm chắc 3 bước của Major GC: <strong>Marking &rarr; Sweeping &rarr; Compacting</strong>.</div>
+    <div>&#9989; Nhận diện và phòng tránh 4 loại <strong>Memory Leaks</strong> phổ biến.</div>
+    <div>&#9989; Sử dụng thành thạo <code>WeakMap</code>, <code>WeakRef</code>, và <code>FinalizationRegistry</code>.</div>
+    <div>&#9989; Toàn bộ 35 test suites (217/217 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CHÚC MỪNG HOÀN THÀNH MODULE 08 -->
+  <div class="callout bridge">
+    <div class="ct">&#127881; Chúc mừng hoàn thành trọn vẹn Module 08 !</div>
+    <p>Bạn đã làm chủ toàn bộ thế giới ngầm của V8 Engine: Ignition Interpreter, TurboFan JIT Compiler, Deoptimization, Hidden Classes (Shapes), Inline Caching (Monomorphic/Polymorphic/Megamorphic), Generational Garbage Collection và Weak References.</p>
+    <p>Hãy xem trang <strong>Reference Guide Module 08</strong> để ôn tập trước khi tiến vào <strong>Module 09: Module Systems &amp; Modern Tooling Under The Hood</strong> !</p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Tổng kết &amp; Tra cứu nhanh Module 08</div>
+    <div class="nt">Reference Guide · Module 08: V8 Engine Internals &amp; Tối ưu hóa bộ nhớ</div>
+    <p class="nd">Tổng hợp sơ đồ V8 Pipeline, ma trận Shape Transitions, phân vùng bộ nhớ Heap và checklist chống Memory Leaks chuẩn Senior.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0033-hidden-classes-inline-caching.html">&#8592; Bài 33</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="../reference/08-v8-internals-memory.html">Cheatsheet Module 08 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test V8 Garbage Collection và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 08 · V8 Engine Internals &amp; Tối ưu hóa bộ nhớ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 08 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 08 : V8 Engine Internals &amp; Tối ưu hóa bộ nhớ</h1>
+  <p class="subtitle">Bản đồ tư duy toàn diện về động cơ V8: Pipeline biên dịch đa tầng (Ignition &rarr; TurboFan), Hidden Classes (Shapes), Inline Caching (IC) và Generational Garbage Collection từ Bài 32 đến Bài 34.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm trọn 4 trụ cột V8 Internals (JIT Compilation, Shape Transitions, Inline Caching, GC &amp; Weak References).</p>
+
+  <!-- TRỤC 1: V8 PIPELINE -->
+  <h2>1. Bảng quy chuẩn V8 Compilation Pipeline</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Tầng</th><th>Thành phần</th><th>Đầu vào &rarr; Đầu ra</th><th>Cơ chế tối ưu</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>0</strong></td>
+        <td><strong>Parser / Scanner</strong></td>
+        <td>JS Source Code &rarr; AST</td>
+        <td>Phân tích cú pháp, ném Early SyntaxError</td>
+      </tr>
+      <tr>
+        <td><strong>1</strong></td>
+        <td><strong>Ignition</strong></td>
+        <td>AST &rarr; Bytecode</td>
+        <td>Khởi động tức thì (Fast Startup), thu thập <em>Type Feedback Vector</em></td>
+      </tr>
+      <tr>
+        <td><strong>2</strong></td>
+        <td><strong>Sparkplug &amp; Maglev</strong></td>
+        <td>Bytecode &rarr; Baseline Machine Code</td>
+        <td>Tăng tốc trung gian 2x&ndash;5x mà không tốn chi phí phân tích sâu</td>
+      </tr>
+      <tr>
+        <td><strong>3</strong></td>
+        <td><strong>TurboFan</strong></td>
+        <td>Hot Bytecode &rarr; Optimized Machine Code</td>
+        <td><strong>Speculative Optimization</strong>: Tạo mã máy siêu tốc nếu kiểu nhất quán.<br>
+        <em>Bailout / Deopt</em> nếu kiểu dữ liệu bị thay đổi đột ngột!</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: SHAPES & INLINE CACHING -->
+  <h2>2. Ma trận Hidden Classes &amp; Inline Caching (IC)</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <h3>Hidden Classes (Shapes / Maps)</h3>
+      <p><strong>Bản chất :</strong> Ánh xạ object động thành mảng fixed offset trong bộ nhớ C++.</p>
+      <p><strong>Shape Transition :</strong> Xây dựng theo <em>thứ tự gán thuộc tính</em>. Cùng thứ tự &rarr; cùng Shape (tiết kiệm RAM &amp; kích hoạt Fast Path).</p>
+      <p><code>delete obj.prop</code>: Phá vỡ Shape, hạ cấp Object sang <strong>Dictionary Mode</strong> (chậm hơn 10x-50x).</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>3 Cấp độ Inline Caching (IC)</h3>
+      <p><strong>1. Monomorphic (1 Shape) :</strong> Tối ưu tối đa $O(1)$ &mdash; đọc thẳng Memory Offset ngang tốc độ C++.</p>
+      <p><strong>2. Polymorphic (2-4 Shapes) :</strong> Sinh nhánh <code>switch-case</code> nhỏ để kiểm tra Shape.</p>
+      <p><strong>3. Megamorphic (&gt; 4 Shapes) :</strong> Hủy bỏ IC, tra cứu chậm qua Global Hash Table.</p>
+    </div>
+  </div>
+
+  <!-- TRỤC 3: GC & MEMORY LEAKS -->
+  <h2>3. V8 Garbage Collection &amp; Weak References</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; WeakRef &amp; FinalizationRegistry Pattern</span>
+    <pre><code><span class="cmt">// 1. FinalizationRegistry: Cleanup callback khi object bị thu hồi</span>
+<span class="kw">const</span> registry = <span class="kw">new</span> <span class="fn">FinalizationRegistry</span>((heldValue) => {
+  console.<span class="fn">log</span>(`Cleanup: Object "${heldValue}" đã bị giải phóng`);
+});
+
+<span class="cmt">// 2. WeakRef: Giữ tham chiếu yếu không chặn GC</span>
+<span class="kw">let</span> cacheObj = { key: <span class="str">'expensive_data'</span> };
+registry.<span class="fn">register</span>(cacheObj, cacheObj.key);
+<span class="kw">const</span> weakRef = <span class="kw">new</span> <span class="fn">WeakRef</span>(cacheObj);
+
+<span class="cmt">// 3. Truy xuất an toàn qua deref()</span>
+<span class="kw">const</span> liveData = weakRef.<span class="fn">deref</span>(); <span class="cmt">// Trả về object hoặc undefined nếu đã bị GC dọn</span></code></pre>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0034-v8-garbage-collection-weakref.html">&#8592; Bài 34</a>
+    <a href="../lessons/index.html">&#127968; Mục lục khóa học</a>
+    <a href="../lessons/0035-esm-vs-cjs.html" class="disabled">Module 09 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh:</strong> Hãy lưu trang này để ôn luyện trước các buổi phỏng vấn kỹ thuật hoặc in ra (Ctrl + P) để ôn tập offline bất kỳ lúc nào !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

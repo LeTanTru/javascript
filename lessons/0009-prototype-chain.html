@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 09 · Prototype Chain: Phân biệt prototype vs __proto__ vs [[Prototype]]</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 03 · Bài 09 (Khởi đầu Module 03)</span>
+  <h1>Bài 09 · Prototype Chain: Phân biệt <code>prototype</code> vs <code>__proto__</code> vs <code>[[Prototype]]</code></h1>
+  <p class="subtitle">Phá vỡ sự nhầm lẫn kinh điển nhất trong OOP của JavaScript: phân định rạch ròi giữa khuôn mẫu của hàm khởi tạo, accessor property và internal slot kế thừa theo chuẩn ECMAScript.</p>
+  <p class="meta-line">&#9203; ~18 phút &middot; &#127919; Mục tiêu: Phân biệt chính xác 3 khái niệm prototype, nắm vững cơ chế duyệt chuỗi Prototype Chain, Property Shadowing và kỹ thuật Dictionary thuần với Object.create(null).</p>
+
+  <!-- BẮC CẦU TỪ BÀI 08 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Module 02</div>
+    <p>Ở Module 02, chúng ta đã nắm trọn cách JavaScript phân giải biến qua <strong>Scope Chain</strong> (Singly Linked List của các Lexical Environments). Nhưng khi chúng ta truy cập thuộc tính của một đối tượng (ví dụ <code>user.toString()</code>), JavaScript không tìm kiếm trên Scope Chain mà tra cứu trên một chuỗi hoàn toàn khác: <strong>Prototype Chain</strong>.</p>
+    <p>JavaScript là một ngôn ngữ hướng đối tượng dựa trên nguyên mẫu (<em>Prototype-based Object-Oriented Language</em>). Hiểu rõ Prototype Chain là chìa khóa để giải mã từ khóa <code>new</code>, <code>class</code>, cơ chế kế thừa và tối ưu hóa bộ nhớ cấp cao.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Giải phẫu 3 khái niệm Prototype: Bộ ba dễ nhầm lẫn nhất</h2>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Ký hiệu / Thuộc tính</th>
+        <th>Bản chất kỹ thuật theo ECMA-262</th>
+        <th>Tồn tại ở đâu ?</th>
+        <th>Mục đích sử dụng</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong><code>[[Prototype]]</code></strong></td>
+        <td><strong>Internal Slot ẩn</strong> (Trường nội bộ của Engine). Không thể truy cập trực tiếp bằng cú pháp dấu chấm thông thường.</td>
+        <td><strong>Mọi Object</strong> trong JavaScript (trừ <code>Object.create(null)</code>).</td>
+        <td>Lưu trữ tham chiếu trực tiếp đến đối tượng cha mà object này kế thừa.</td>
+      </tr>
+      <tr>
+        <td><strong><code>__proto__</code></strong></td>
+        <td><strong>Accessor Property</strong> (gồm hàm <code>getter</code> và <code>setter</code>) được định nghĩa trên <code>Object.prototype</code>.</td>
+        <td>Kế thừa từ <code>Object.prototype</code> xuống các đối tượng con.</td>
+        <td>Cho phép lập trình viên đọc/ghi vào <code>[[Prototype]]</code> (Đã bị coi là <em>deprecated</em> trong chuẩn hiện đại).</td>
+      </tr>
+      <tr>
+        <td><strong><code>prototype</code></strong></td>
+        <td><strong>Thuộc tính thông thường</strong> (Object property) chỉ trỏ tới một object đóng vai trò "khuôn mẫu".</td>
+        <td><strong>CHỈ tồn tại trên Function</strong> (Constructor Functions, Class). <em>Không có</em> trên Arrow Functions hay instance !</td>
+        <td>Được dùng để gán làm <code>[[Prototype]]</code> cho các instance tạo ra bởi lệnh <code>new Fn()</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout danger">
+    <div class="ct">&#9888; Bằng chứng Arrow Function &amp; Instance không có thuộc tính prototype</div>
+    <div class="code-block">
+      <span class="code-label">JavaScript &mdash; Kiểm tra thuộc tính prototype</span>
+      <pre><code><span class="kw">function</span> <span class="fn">Car</span>(brand) { <span class="kw">this</span>.brand = brand; }
+<span class="kw">const</span> arrow = () => {};
+<span class="kw">const</span> myCar = <span class="kw">new</span> <span class="fn">Car</span>(<span class="str">"Toyota"</span>);
+
+console.<span class="fn">log</span>(<span class="kw">typeof</span> Car.prototype);   <span class="cmt">// &#8594; "object" (Có prototype)</span>
+console.<span class="fn">log</span>(arrow.prototype);        <span class="cmt">// &#8594; undefined (Arrow function KHÔNG CÓ prototype !)</span>
+console.<span class="fn">log</span>(myCar.prototype);        <span class="cmt">// &#8594; undefined (Instance KHÔNG CÓ thuộc tính prototype !)</span>
+
+<span class="cmt">// Truy cập [[Prototype]] của instance chuẩn mực:</span>
+console.<span class="fn">log</span>(Object.<span class="fn">getPrototypeOf</span>(myCar) === Car.prototype); <span class="cmt">// &#8594; true !</span></code></pre>
+    </div>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Cơ chế duyệt chuỗi Prototype Chain &amp; Property Shadowing</h2>
+  <p>Khi bạn thực hiện thao tác đọc một thuộc tính trên đối tượng (<code>obj.property</code>), JavaScript Engine thực hiện thuật toán tìm kiếm tuyến tính :</p>
+  <ol>
+    <li>Kiểm tra xem <code>property</code> có phải là <strong>Own Property</strong> (thuộc tính của chính bản thân <code>obj</code>) hay không bằng <code>Object.hasOwn(obj, "property")</code>. Nếu có &rarr; Trả về giá trị ngay.</li>
+    <li>Nếu không có, Engine lần theo con trỏ <code>[[Prototype]]</code> để nhảy lên đối tượng cha.</li>
+    <li>Lặp lại bước 1 và 2 dọc theo chuỗi kế thừa cho đến khi chạm tới <strong><code>Object.prototype</code></strong>.</li>
+    <li>Nếu tại <code>Object.prototype</code> vẫn không tìm thấy, Engine kiểm tra <code>[[Prototype]]</code> của nó: giá trị này là <strong><code>null</code></strong> (đỉnh của chuỗi). Engine dừng lại và trả về <code>undefined</code>.</li>
+  </ol>
+
+  <div class="callout why">
+    <div class="ct">&#128161; Hiện tượng Property Shadowing (Che khuất thuộc tính)</div>
+    <p>Khi ta gán giá trị cho một thuộc tính (<code>child.title = "New Title"</code>), theo quy tắc thông thường, JavaScript sẽ tạo ra một <strong>Own Property mới</strong> trực tiếp trên <code>child</code>, che khuất thuộc tính cùng tên của Prototype cha mà <strong>không hề làm thay đổi Prototype gốc</strong> :</p>
+    <div class="code-block">
+      <span class="code-label">JavaScript</span>
+      <pre><code><span class="kw">const</span> parent = { role: <span class="str">"Admin"</span> };
+<span class="kw">const</span> child = Object.<span class="fn">create</span>(parent);
+
+console.<span class="fn">log</span>(child.role); <span class="cmt">// &#8594; "Admin" (Đọc từ parent)</span>
+
+child.role = <span class="str">"Member"</span>;  <span class="cmt">// Tạo own property trên child</span>
+console.<span class="fn">log</span>(child.role);  <span class="cmt">// &#8594; "Member" (Shadowing)</span>
+console.<span class="fn">log</span>(parent.role); <span class="cmt">// &#8594; "Admin" (Parent vẫn nguyên vẹn !)</span></code></pre>
+    </div>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Chuẩn thao tác Prototype hiện đại &amp; Bí mật <code>Object.create(null)</code></h2>
+
+  <h3>3.1. Tại sao KHÔNG BAO GIỜ nên dùng <code>__proto__</code> hay <code>Object.setPrototypeOf()</code> trong Production ?</h3>
+  <ul>
+    <li><strong><code>__proto__</code> là di sản lỗi thời :</strong> Nó chỉ là một phụ lục tương thích ngược (Annex B của đặc tả). Sử dụng nó làm chậm code và không được đảm bảo trên mọi môi trường JS phi trình duyệt.</li>
+    <li><strong><code>Object.setPrototypeOf()</code> làm sụp đổ tối ưu hóa của V8 :</strong> JavaScript Engine tối ưu hóa việc truy cập thuộc tính thông qua <em>Hidden Classes (Shapes)</em> và <em>Inline Caching</em>. Khi bạn đột biến prototype của một đối tượng đang chạy, V8 lập tức giải tối ưu hóa (De-optimization), khiến tốc độ truy xuất thuộc tính chậm đi hàng chục lần !</li>
+    <li><strong>Giải pháp chuẩn Senior :</strong> Luôn thiết lập prototype ngay tại thời điểm khởi tạo bằng <strong><code>Object.create(proto)</code></strong> hoặc cú pháp <code>class / constructor</code>.</li>
+  </ul>
+
+  <h3>3.2. Ứng dụng đỉnh cao: Dictionary sạch tuyệt đối với <code>Object.create(null)</code></h3>
+  <p>Một Object thông thường (<code>{}</code>) luôn kế thừa từ <code>Object.prototype</code>, do đó nó tiềm ẩn nguy cơ bảo mật <em>Prototype Pollution</em> hoặc lỗi khi dữ liệu vô tình trùng tên với các phương thức có sẵn như <code>toString</code>, <code>valueOf</code>, <code>constructor</code>.</p>
+  <p>Để tạo một bảng tra cứu (Dictionary / Hash Map) thuần túy không chứa bất kỳ thuộc tính kế thừa nào :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Pure Dictionary</span>
+    <pre><code><span class="kw">const</span> map = Object.<span class="fn">create</span>(<span class="kw">null</span>);
+
+console.<span class="fn">log</span>(Object.<span class="fn">getPrototypeOf</span>(map)); <span class="cmt">// &#8594; null !</span>
+console.<span class="fn">log</span>(map.toString);               <span class="cmt">// &#8594; undefined (Không hề có prototype)</span>
+
+<span class="cmt">// An toàn tuyệt đối làm Dictionary:</span>
+map[<span class="str">"toString"</span>] = <span class="str">"Giá trị của tôi"</span>;
+console.<span class="fn">log</span>(map.toString);               <span class="cmt">// &#8594; "Giá trị của tôi" (Không lo bị override method hệ thống)</span></code></pre>
+  </div>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Phân biệt rõ ràng giữa `prototype` và `__proto__` bằng một câu trả lời súc tích ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"`prototype` là thuộc tính chỉ có trên các Constructor Function và Class, đóng vai trò là bản thiết kế mẫu để gán vào các instance con khi được tạo ra bởi lệnh `new`. Trong khi đó, `__proto__` (hoặc chuẩn hơn là internal slot `[[Prototype]]`) là con trỏ tham chiếu nằm trên mọi Object instance, trỏ ngược về prototype của cha mà nó kế thừa. Tóm lại: `instance.__proto__ === Constructor.prototype`."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Phân biệt toán tử `in` và phương thức `Object.hasOwn()` ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"`Object.hasOwn(obj, prop)` (chuẩn ES2022 thay thế cho `obj.hasOwnProperty`) chỉ kiểm tra xem thuộc tính đó có phải là Own Property của chính đối tượng hay không, bỏ qua hoàn toàn Prototype Chain. Ngược lại, toán tử `'prop' in obj` sẽ kiểm tra toàn bộ Prototype Chain từ đối tượng hiện tại ngược lên tới đỉnh `Object.prototype`."</em></p>
+  </div>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code sau in ra kết quả gì ?<br>
+    <code>const fn = () => {}; console.log(fn.prototype);</code></div>
+    <button class="opt" data-correct="false" data-explain="Sai! Arrow Function không phải là constructor nên không có thuộc tính prototype.">A. {}</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Arrow Functions trong ES6 được thiết kế không thể dùng với từ khóa 'new', do đó JavaScript Engine không cấp phát thuộc tính prototype cho Arrow Functions, kết quả là undefined.">B. undefined</button>
+    <button class="opt" data-correct="false" data-explain="Sai! fn là một hàm hoàn toàn hợp lệ nên không có TypeError.">C. TypeError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Đỉnh cao nhất (Top of chain) của mọi Prototype Chain thông thường trong JavaScript có [[Prototype]] bằng bao nhiêu ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Object.prototype là đối tượng ở đỉnh chuỗi, nhưng [[Prototype]] của chính nó mới là đỉnh cùng.">A. Object.prototype</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Đỉnh của chuỗi kế thừa là Object.prototype, và Object.getPrototypeOf(Object.prototype) trả về null để báo hiệu kết thúc chuỗi.">B. null</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Trong JavaScript, null biểu thị không có prototype nào tiếp theo, chứ không phải undefined.">C. undefined</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Phân biệt chính xác giữa <code>prototype</code>, <code>__proto__</code> và <code>[[Prototype]]</code>.</div>
+    <div>&#9989; Hiểu rõ lý do Arrow Function không có thuộc tính <code>prototype</code>.</div>
+    <div>&#9989; Nắm chắc thuật toán duyệt Prototype Chain và hiện tượng Property Shadowing.</div>
+    <div>&#9989; Biết cách tạo Pure Dictionary không prototype bằng <code>Object.create(null)</code>.</div>
+    <div>&#9989; Toàn bộ 67 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 10 :</div>
+    <p>Chúng ta vừa biết rằng khi gọi <code>new Fn()</code>, instance mới sinh ra sẽ tự động có <code>[[Prototype]]</code> trỏ tới <code>Fn.prototype</code>.</p>
+    <p><em>"Điều gì thực sự diễn ra bên trong JavaScript Engine khi từ khóa <strong><code>new</code></strong> được kích hoạt ? 4 bước thần thánh của toán tử <code>new</code> là gì, và làm thế nào để tự tay viết một hàm polyfill <strong><code>myNew()</code></strong> mô phỏng chính xác 100% hành vi này của Engine ?"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 10 · Function Constructor, `new` Operator Internals &amp; `Object.create()`</div>
+    <p class="nd">Giải phẫu 4 bước của toán tử new, bẫy return object vs primitive trong constructor và tự viết polyfill myNew.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0008-closures-applications.html">&#8592; Bài 08</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để xem 6 bài test của Bài 09 và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

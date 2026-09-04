@@ -137,7 +137,7 @@ Kỹ thuật chuyển đổi một hàm nhận $n$ tham số thành một chuỗ
 _Avoid_: Nested calling, chain parameters
 
 **Memoization**:
-Kỹ thuật tối ưu hóa hiệu năng bằng cách lưu trữ kết quả của các lần gọi hàm thuần túy (Pure Functions) ứng với từng bộ tham số vào một bộ đệm (Cache) nằm trong phạm vi Closure, giúp các lần gọi sau trả kết quả ngay lập tức với $O(1)$.
+Kỹ thuật tối ưu hóa hiệu năng bằng cách lưu trữ kết quả của các lần gọi hàm thuần túy (Pure Functions) ứng với từng bộ tham số vào một bộ đệm (Cache) nằm trong phạm vi Closure, giúp các lần gọi sau trả kết quả ngay lập tức với O(1).
 _Avoid_: Memory saving, function caching
 
 **Retained Size**:
@@ -147,5 +147,18 @@ _Avoid_: Object weight, total memory
 **Detached DOM Tree**:
 Hiện tượng rò rỉ bộ nhớ xảy ra khi một phần tử HTML đã bị gỡ khỏi cây DOM của trang web nhưng vẫn không thể bị Garbage Collector thu dọn do còn ít nhất một biến hoặc Closure trong JavaScript lưu giữ tham chiếu trực tiếp/gián tiếp tới nó.
 _Avoid_: Orphan node, floating element
+
+**[[Prototype]]**:
+Internal slot ẩn của mọi đối tượng trong JavaScript theo đặc tả ECMAScript, lưu trữ tham chiếu đến prototype object mà đối tượng đó kế thừa. Đỉnh của chuỗi kế thừa là `Object.prototype` với `[[Prototype]] === null`. Truy cập chuẩn qua `Object.getPrototypeOf()` và `Object.setPrototypeOf()`.
+_Avoid_: Hidden class, base class
+
+**__proto__**:
+Accessor property (getter/setter) trên `Object.prototype` cho phép đọc/ghi `[[Prototype]]` của đối tượng. Đã bị xem là deprecated trong chuẩn hiện đại, chỉ tồn tại để tương thích ngược.
+_Avoid_: Function prototype, prototype property
+
+**Property Shadowing**:
+Hiện tượng khi một thuộc tính được gán trực tiếp lên đối tượng con (Own Property) có cùng tên với thuộc tính nằm trên Prototype Chain của nó, dẫn đến việc thuộc tính con che khuất thuộc tính cha trong các thao tác đọc mà không làm thay đổi giá trị trên prototype cha.
+_Avoid_: Property overriding, class overwrite
+
 
 

@@ -3,7 +3,7 @@
 Người học chính thức hoàn thành toàn bộ Module 02 (Execution Context, Scope Chain & Closures). Làm chủ các mẫu thiết kế kinh điển ứng dụng Closures:
 - Revealing Module Pattern: Đóng gói Private State an toàn, chỉ để lộ Public API cần thiết, cô lập hoàn toàn biến nội bộ khỏi sự can thiệp trái phép từ bên ngoài.
 - Currying & Partial Application: Tận dụng Closures lưu giữ tham số để cấu hình trước các hàm tiện ích có tính tái sử dụng cao (như Logger, Event dispatchers).
-- Memoization: Sử dụng bộ đệm bảng băm (Map) nằm trong phạm vi Closure để cache kết quả tính toán đắt đỏ của các pure functions, tối ưu hóa độ phức tạp thời gian về $O(1)$.
+- Memoization: Sử dụng bộ đệm bảng băm (Map) nằm trong phạm vi Closure để cache kết quả tính toán đắt đỏ của các pure functions, tối ưu hóa độ phức tạp thời gian về O(1).
 
 Phân tích chuyên sâu 3 kịch bản rò rỉ bộ nhớ (Memory Leaks) kinh điển do Closures gây ra:
 1. Dangling Event Listeners: Giữ tham chiếu tới DOM Node đã bị xóa khỏi document tạo ra hiện tượng Detached DOM Tree ngốn RAM.

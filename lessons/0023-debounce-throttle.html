@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 23 · Live-coding: Cài đặt Debounce &amp; Throttle (Leading, Trailing &amp; Cancel options)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 06 · Bài 23 (Functional Programming &amp; Utility Polyfills)</span>
+  <h1>Bài 23 · Live-coding: Cài đặt <code>debounce</code> &amp; <code>throttle</code> (Leading, Trailing &amp; Cancel options)</h1>
+  <p class="subtitle">Bộ đôi kỹ thuật tối ưu hóa hiệu năng và xử lý sự kiện tần suất cao (High-frequency Events) xuất hiện trong 90% các buổi phỏng vấn Frontend: Phân biệt bản chất, tự tay code polyfill chuẩn Lodash và xử lý triệt để memory leaks.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Phân biệt chính xác Use-case của Debounce vs Throttle, tự code 2 hàm hỗ trợ đầy đủ các options (leading, trailing, .cancel(), .flush()) và hiểu cơ chế bảo toàn this context.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 22 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 22</div>
+    <p>Ở Bài 22, bạn đã học cách biến đổi hàm với <strong>Higher-Order Functions &amp; Closures</strong>. <strong>Debounce</strong> và <strong>Throttle</strong> chính là hai ứng dụng thực chiến kinh điển nhất của tư duy này &mdash; chúng nhận vào một hàm và trả về một hàm bọc mới có khả năng kiểm soát tần suất thực thi qua thời gian.</p>
+  </div>
+
+  <!-- PHẦN 1: BẢN CHẤT & SO SÁNH -->
+  <h2>1. Phân biệt bản chất: Debounce vs Throttle</h2>
+  <p>Khi người dùng gõ bàn phím liên tục, kéo resize cửa sổ hoặc cuộn trang (scroll), trình duyệt có thể phát ra hàng trăm sự kiện mỗi giây. Nếu mỗi sự kiện đều gọi API hoặc tính toán DOM, ứng dụng sẽ bị đơ (jank) hoặc gây quá tải server.</p>
+
+  <table class="data">
+    <thead>
+      <tr><th>Tiêu chí</th><th>Debounce (Hoãn thực thi)</th><th>Throttle (Điều tiết nhịp độ)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Định nghĩa</strong></td>
+        <td>Gom nhiều lời gọi liên tiếp thành <strong>1 lời gọi duy nhất</strong> sau khi người dùng <em>ngừng thao tác</em> một khoảng <code>wait</code> ms.</td>
+        <td>Đảm bảo hàm được thực thi <strong>tối đa 1 lần trong mỗi khoảng thời gian</strong> <code>wait</code> ms cố định.</td>
+      </tr>
+      <tr>
+        <td><strong>Reset Timer ?</strong></td>
+        <td><strong>Có</strong> &mdash; Mỗi lần gọi mới trong khoảng <code>wait</code> sẽ hủy timer cũ và đếm lại từ đầu.</td>
+        <td><strong>Không</strong> &mdash; Chu kỳ thời gian chạy độc lập, không bị reset bởi các thao tác gọi mới.</td>
+      </tr>
+      <tr>
+        <td><strong>Use Case kinh điển</strong></td>
+        <td>Auto-save form, Typeahead search / Autocomplete, Window Resize event.</td>
+        <td>Infinite Scroll, Scroll spy (cập nhật active menu), Drag and Drop tracking, Throttle button clicks chống spam.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2: CÀI ĐẶT DEBOUNCE -->
+  <h2>2. Live-coding: Cài đặt <code>debounce()</code> hoàn chỉnh</h2>
+  <p>Cấu trúc của <code>debounce</code> gồm bộ đếm thời gian <code>timerId</code>, lưu giữ <code>lastArgs</code> và <code>lastThis</code> trong Closure scope để chuyển giao khi kích hoạt :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; debounce polyfill (Hỗ trợ leading, trailing, .cancel(), .flush())</span>
+    <pre><code><span class="kw">function</span> <span class="fn">debounce</span>(fn, wait, options = {}) {
+  <span class="kw">const</span> { leading = <span class="kw">false</span>, trailing = <span class="kw">true</span> } = options;
+  <span class="kw">let</span> timerId = <span class="kw">null</span>;
+  <span class="kw">let</span> lastArgs = <span class="kw">null</span>;
+  <span class="kw">let</span> lastThis = <span class="kw">null</span>;
+  <span class="kw">let</span> result;
+
+  <span class="kw">function</span> <span class="fn">invokeFn</span>() {
+    <span class="kw">if</span> (lastArgs !== <span class="kw">null</span>) {
+      result = fn.<span class="fn">apply</span>(lastThis, lastArgs);
+      lastArgs = <span class="kw">null</span>;
+      lastThis = <span class="kw">null</span>;
+    }
+    <span class="kw">return</span> result;
+  }
+
+  <span class="kw">function</span> <span class="fn">debounced</span>(...args) {
+    lastArgs = args;
+    lastThis = <span class="kw">this</span>;
+
+    <span class="kw">const</span> isInvokingLeading = leading && timerId === <span class="kw">null</span>;
+
+    <span class="kw">if</span> (timerId !== <span class="kw">null</span>) {
+      <span class="fn">clearTimeout</span>(timerId); <span class="cmt">// Reset timer nếu có call mới</span>
+    }
+
+    timerId = <span class="fn">setTimeout</span>(() => {
+      timerId = <span class="kw">null</span>;
+      <span class="kw">if</span> (trailing && !isInvokingLeading) {
+        <span class="fn">invokeFn</span>();
+      }
+    }, wait);
+
+    <span class="kw">if</span> (isInvokingLeading) {
+      <span class="fn">invokeFn</span>(); <span class="cmt">// Chạy ngay lập tức ở cạnh đầu (leading edge)</span>
+    }
+
+    <span class="kw">return</span> result;
+  }
+
+  <span class="cmt">// Hủy bỏ timer đang chờ (tránh memory leak khi unmount component)</span>
+  debounced.<span class="fn">cancel</span> = <span class="kw">function</span>() {
+    <span class="kw">if</span> (timerId !== <span class="kw">null</span>) {
+      <span class="fn">clearTimeout</span>(timerId);
+      timerId = <span class="kw">null</span>;
+    }
+    lastArgs = <span class="kw">null</span>;
+    lastThis = <span class="kw">null</span>;
+  };
+
+  <span class="cmt">// Ép thực thi ngay lập tức không cần chờ timer</span>
+  debounced.<span class="fn">flush</span> = <span class="kw">function</span>() {
+    <span class="kw">if</span> (timerId !== <span class="kw">null</span>) {
+      <span class="fn">clearTimeout</span>(timerId);
+      timerId = <span class="kw">null</span>;
+      <span class="kw">return</span> <span class="fn">invokeFn</span>();
+    }
+    <span class="kw">return</span> result;
+  };
+
+  <span class="kw">return</span> debounced;
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 3: CÀI ĐẶT THROTTLE -->
+  <h2>3. Live-coding: Cài đặt <code>throttle()</code> chuẩn Timestamp + Timer</h2>
+  <p>Phương pháp kết hợp <strong>Timestamp (cho Leading execution)</strong> và <strong>Timer (cho Trailing execution)</strong> đảm bảo vừa phản hồi tức thì vừa không bỏ sót lần tương tác cuối cùng của người dùng :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; throttle polyfill (Leading + Trailing)</span>
+    <pre><code><span class="kw">function</span> <span class="fn">throttle</span>(fn, wait, options = {}) {
+  <span class="kw">const</span> { leading = <span class="kw">true</span>, trailing = <span class="kw">true</span> } = options;
+  <span class="kw">let</span> timerId = <span class="kw">null</span>;
+  <span class="kw">let</span> lastArgs = <span class="kw">null</span>;
+  <span class="kw">let</span> lastThis = <span class="kw">null</span>;
+  <span class="kw">let</span> lastCallTime = <span class="num">0</span>;
+  <span class="kw">let</span> result;
+
+  <span class="kw">function</span> <span class="fn">invokeFn</span>(time) {
+    lastCallTime = time;
+    <span class="kw">if</span> (lastArgs !== <span class="kw">null</span>) {
+      result = fn.<span class="fn">apply</span>(lastThis, lastArgs);
+      lastArgs = <span class="kw">null</span>;
+      lastThis = <span class="kw">null</span>;
+    }
+    <span class="kw">return</span> result;
+  }
+
+  <span class="kw">function</span> <span class="fn">throttled</span>(...args) {
+    <span class="kw">const</span> now = Date.<span class="fn">now</span>();
+    lastArgs = args;
+    lastThis = <span class="kw">this</span>;
+
+    <span class="kw">if</span> (lastCallTime === <span class="num">0</span> && !leading) {
+      lastCallTime = now;
+    }
+
+    <span class="kw">const</span> remaining = wait - (now - lastCallTime);
+
+    <span class="cmt">// Đã hết chu kỳ wait -> Chạy ngay lập tức</span>
+    <span class="kw">if</span> (remaining <= <span class="num">0</span> || remaining > wait) {
+      <span class="kw">if</span> (timerId !== <span class="kw">null</span>) {
+        <span class="fn">clearTimeout</span>(timerId);
+        timerId = <span class="kw">null</span>;
+      }
+      <span class="fn">invokeFn</span>(now);
+    } <span class="kw">else if</span> (timerId === <span class="kw">null</span> && trailing) {
+      <span class="cmt">// Chưa hết chu kỳ -> Lên lịch cho lần gọi trailing cuối cùng</span>
+      timerId = <span class="fn">setTimeout</span>(() => {
+        timerId = <span class="kw">null</span>;
+        lastCallTime = leading ? Date.<span class="fn">now</span>() : <span class="num">0</span>;
+        <span class="fn">invokeFn</span>(Date.<span class="fn">now</span>());
+      }, remaining);
+    }
+
+    <span class="kw">return</span> result;
+  }
+
+  throttled.<span class="fn">cancel</span> = <span class="kw">function</span>() {
+    <span class="kw">if</span> (timerId !== <span class="kw">null</span>) {
+      <span class="fn">clearTimeout</span>(timerId);
+      timerId = <span class="kw">null</span>;
+    }
+    lastCallTime = <span class="num">0</span>;
+    lastArgs = <span class="kw">null</span>;
+    lastThis = <span class="kw">null</span>;
+  };
+
+  <span class="kw">return</span> throttled;
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 4: MEMORY LEAKS & REACT HOOKS -->
+  <h2>4. Bẫy Memory Leak &amp; Sử dụng chuẩn trong React</h2>
+  <div class="callout tip">
+    <div class="ct">&#9888; Cạm bẫy khi dùng Debounce trong React Component</div>
+    <p>Nếu bạn khai báo <code>const debouncedFn = debounce(fn, 300)</code> trực tiếp trong thân function component, mỗi lần component re-render sẽ tạo ra một hàm debounce <strong>mới toanh</strong> và timer cũ bị mồ côi (không reset được). Luôn sử dụng <code>useCallback</code> hoặc <code>useMemo</code> kèm hàm cleanup <code>.cancel()</code> trong <code>useEffect</code> !</p>
+  </div>
+
+  <div class="code-block">
+    <span class="code-label">React &mdash; Custom Hook useDebounce chuẩn mực</span>
+    <pre><code><span class="kw">function</span> <span class="fn">useDebouncedCallback</span>(callback, wait) {
+  <span class="kw">const</span> callbackRef = <span class="fn">useRef</span>(callback);
+  callbackRef.current = callback;
+
+  <span class="kw">const</span> debounced = <span class="fn">useMemo</span>(
+    () => <span class="fn">debounce</span>((...args) => callbackRef.current(...args), wait),
+    [wait]
+  );
+
+  <span class="fn">useEffect</span>(() => {
+    <span class="kw">return</span> () => debounced.<span class="fn">cancel</span>(); <span class="cmt">// Cleanup khi unmount</span>
+  }, [debounced]);
+
+  <span class="kw">return</span> debounced;
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Bạn cần cài đặt tính năng Infinite Scroll: khi người dùng cuộn đến gần đáy trang, gọi API tải thêm 20 sản phẩm. Bạn nên chọn Debounce hay Throttle ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Nếu dùng Debounce, trong lúc người dùng cuộn liên tục, API sẽ không bao giờ được gọi cho đến khi họ dừng tay hẳn, gây trải nghiệm giật cục.">A. Debounce (wait: 300ms)</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Throttle kiểm tra vị trí cuộn đều đặn sau mỗi 100-200ms ngay cả khi người dùng đang cuộn liên tục, giúp dữ liệu được tải sớm trước khi cuộn chạm đáy.">B. Throttle (wait: 150ms) để kiểm tra tọa độ cuộn định kỳ liên tục trong khi cuộn</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Gọi trực tiếp trên scroll event mà không điều tiết sẽ gây drop FPS nghiêm trọng.">C. Không cần dùng cả hai, gắn trực tiếp vào window.onscroll</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Tác dụng của phương thức .cancel() trong hàm debounce/throttle là gì ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! .cancel() dọn dẹp clearTimeout() và giải phóng tham chiếu arguments/this, ngăn ngừa việc cập nhật state lên một component đã unmount.">A. Hủy bỏ timer đang đếm ngược và dọn dẹp bộ nhớ, tránh memory leak khi component unmount</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Đó là nhiệm vụ của .flush().">B. Ép hàm chạy ngay lập tức</button>
+    <button class="opt" data-correct="false" data-explain="Sai! .cancel() chỉ hủy tác vụ chờ hiện tại, không khóa vĩnh viễn hàm.">C. Vô hiệu hóa hàm debounce vĩnh viễn không cho gọi lại</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 6: CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng — Bài 23</h2>
+  <div class="checklist">
+    <div>&#9989; Phân biệt rạch ròi cơ chế và tình huống sử dụng của Debounce vs Throttle.</div>
+    <div>&#9989; Tự tay code hoàn chỉnh <code>debounce</code> hỗ trợ <code>leading</code>, <code>trailing</code>, <code>.cancel()</code>, <code>.flush()</code>.</div>
+    <div>&#9989; Tự tay code <code>throttle</code> phối hợp giữa Timestamp và Timer.</div>
+    <div>&#9989; Bảo toàn <code>this</code> context và arguments trong mọi tình huống.</div>
+    <div>&#9989; Toàn bộ 24 test suites (151/151 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo trong Module 06</div>
+    <div class="nt">Bài 24 · Live-coding: Tự viết <code>deepClone</code> vs <code>structuredClone</code></div>
+    <p class="nd">Xử lý sao chép sâu các cấu trúc dữ liệu phức tạp: Xử lý quan hệ tham chiếu vòng (Circular References) bằng WeakMap, Date, RegExp, Map, Set và Symbol.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0022-currying-partial-application.html">&#8592; Bài 22</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0024-deep-clone.html">Bài 24 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Debounce &amp; Throttle và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

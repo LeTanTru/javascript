@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 31 · Web Workers, Service Workers, Cache API &amp; Đa luồng trên Browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 07 · Bài 31 (Hoàn tất Module 07)</span>
+  <h1>Bài 31 · Web Workers, Service Workers, Cache API &amp; Đa luồng trên Browser</h1>
+  <p class="subtitle">Phá vỡ giới hạn đơn luồng (Single-Thread) của JavaScript: Chạy tính toán nặng ngầm với Web Workers, giải mã kiến trúc Service Workers (Proxy mạng ngầm), 3 chiến lược Caching (Cache-First, Network-First, Stale-While-Revalidate) và biến ứng dụng thành PWA Offline.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Phân biệt chính xác Web Worker vs Service Worker, cơ chế truyền dữ liệu qua postMessage / Transferable Objects, vòng đời Service Worker và triển khai các Caching Strategies chuẩn production.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 30 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 30</div>
+    <p>Ở Bài 30, bạn đã biết cách bảo vệ Main Thread khỏi <code>Layout Thrashing</code>. Nhưng nếu bạn có các tác vụ tính toán khổng lồ (xử lý ảnh canvas, mã hóa crypto, nén file zip, AI client-side), việc chạy trên Main Thread sẽ làm đứng hình giao diện. Giải pháp là <strong>Web Workers &amp; Service Workers</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1: SO SÁNH WEB WORKER VS SERVICE WORKER -->
+  <h2>1. Phân biệt Web Worker vs Service Worker vs Worklet</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Tiêu chí</th><th>Web Worker (Dedicated Worker)</th><th>Service Worker (Network Proxy)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Mục đích chính</strong></td>
+        <td>Xử lý tính toán nặng ngầm giải phóng UI Main Thread</td>
+        <td>Proxy mạng ngầm, chặn request (intercept fetch), Offline cache, Push notification</td>
+      </tr>
+      <tr>
+        <td><strong>Vòng đời (Lifecycle)</strong></td>
+        <td>Gắn liền với tab hiện tại (đóng tab &rarr; worker bị hủy)</td>
+        <td>Độc lập với tab &mdash; chạy ngầm ngay cả khi người dùng đóng hết các tab</td>
+      </tr>
+      <tr>
+        <td><strong>Quyền truy cập DOM</strong></td>
+        <td>&#10060; Không có (không có <code>window</code>, <code>document</code>)</td>
+        <td>&#10060; Không có (chỉ có <code>caches</code>, <code>fetch</code>, <code>indexedDB</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Giao tiếp</strong></td>
+        <td><code>postMessage()</code> với tab tạo ra nó</td>
+        <td><code>postMessage()</code> hoặc phát broadcast đến tất cả tabs mở cùng domain</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2: WEB WORKERS -->
+  <h2>2. Web Workers &amp; Cơ chế truyền dữ liệu (Data Transfer)</h2>
+  <p>Khi gửi dữ liệu qua <code>worker.postMessage(data)</code>, mặc định JavaScript sử dụng <strong>Structured Clone Algorithm</strong> (sao chép vùng nhớ sâu, hoàn toàn độc lập).<br>
+  Với các dữ liệu nhị phân khổng lồ (ArrayBuffer hàng chục MB), bạn có thể dùng <strong>Transferable Objects (Zero-Copy)</strong> để chuyển quyền sở hữu bộ nhớ với tốc độ $0$ms :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Sử dụng Web Worker với Transferable Objects</span>
+    <pre><code><span class="cmt">// --- main.js ---</span>
+<span class="kw">const</span> worker = <span class="kw">new</span> <span class="fn">Worker</span>(<span class="str">'heavy-calc.worker.js'</span>);
+
+<span class="kw">const</span> buffer = <span class="kw">new</span> <span class="fn">ArrayBuffer</span>(<span class="num">1024</span> * <span class="num">1024</span> * <span class="num">32</span>); <span class="cmt">// 32MB dữ liệu</span>
+
+<span class="cmt">// Chuyển quyền sở hữu buffer cho Worker (Zero-Copy Transfer)</span>
+worker.<span class="fn">postMessage</span>({ buffer }, [buffer]);
+console.<span class="fn">log</span>(buffer.byteLength); <span class="cmt">// 0 &larr; buffer ở main thread đã bị giải phóng ngay lập tức!</span>
+
+worker.onmessage = (event) => {
+  console.<span class="fn">log</span>(<span class="str">'Kết quả từ worker:'</span>, event.data);
+};</code></pre>
+  </div>
+
+  <!-- PHẦN 3: SERVICE WORKER & 3 CHIẾN LƯỢC CACHING -->
+  <h2>3. Service Worker &amp; 3 Chiến lược Caching kinh điển</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt 3 chiến lược trong sw.js</span>
+    <pre><code><span class="cmt">// 1. Cache-First (Asset tĩnh: JS/CSS/Fonts/Images)</span>
+<span class="kw">async function</span> <span class="fn">cacheFirst</span>(request) {
+  <span class="kw">const</span> cached = <span class="kw">await</span> caches.<span class="fn">match</span>(request);
+  <span class="kw">if</span> (cached) <span class="kw">return</span> cached;
+  <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(request);
+  <span class="kw">const</span> cache = <span class="kw">await</span> caches.<span class="fn">open</span>(<span class="str">'v1-static'</span>);
+  cache.<span class="fn">put</span>(request, response.<span class="fn">clone</span>());
+  <span class="kw">return</span> response;
+}
+
+<span class="cmt">// 2. Network-First (Dữ liệu động, ưu tiên mới nhất, rớt mạng fallback về cache)</span>
+<span class="kw">async function</span> <span class="fn">networkFirst</span>(request) {
+  <span class="kw">try</span> {
+    <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(request);
+    <span class="kw">const</span> cache = <span class="kw">await</span> caches.<span class="fn">open</span>(<span class="str">'v1-dynamic'</span>);
+    cache.<span class="fn">put</span>(request, response.<span class="fn">clone</span>());
+    <span class="kw">return</span> response;
+  } <span class="kw">catch</span> (err) {
+    <span class="kw">const</span> cached = <span class="kw">await</span> caches.<span class="fn">match</span>(request);
+    <span class="kw">if</span> (cached) <span class="kw">return</span> cached;
+    <span class="kw">throw</span> err;
+  }
+}
+
+<span class="cmt">// 3. Stale-While-Revalidate (Avatar, Feed: Trả cache cũ 0ms và cập nhật ngầm)</span>
+<span class="kw">async function</span> <span class="fn">staleWhileRevalidate</span>(request) {
+  <span class="kw">const</span> cached = <span class="kw">await</span> caches.<span class="fn">match</span>(request);
+  <span class="kw">const</span> networkFetch = <span class="fn">fetch</span>(request).<span class="fn">then</span>(<span class="kw">async</span> (res) => {
+    <span class="kw">const</span> cache = <span class="kw">await</span> caches.<span class="fn">open</span>(<span class="str">'v1-swr'</span>);
+    cache.<span class="fn">put</span>(request, res.<span class="fn">clone</span>());
+    <span class="kw">return</span> res;
+  });
+  <span class="kw">return</span> cached || networkFetch;
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Một Service Worker có thể thao tác trực tiếp với thẻ <code>document.getElementById('app')</code> trên màn hình không ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Service Worker không có quyền truy cập đối tượng DOM document.">A. Có, thông qua window.document</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Cả Web Worker và Service Worker đều chạy trên luồng nền riêng biệt và hoàn toàn không có quyền truy cập DOM. Muốn thay đổi UI, Worker phải gửi dữ liệu qua postMessage để Main Thread thao tác.">B. Hoàn toàn không — Worker không có quyền truy cập DOM để tránh race conditions trên UI</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Chỉ có khi người dùng bật chế độ debug</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Khi nào bạn nên chọn chiến lược Caching Stale-While-Revalidate ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! SWR mang lại trải nghiệm tải tức thì 0ms (dùng cache) đồng thời fetch ngầm để cập nhật dữ liệu cho lần hiển thị kế tiếp.">A. Khi cần hiển thị dữ liệu ngay lập tức (0ms) và chấp nhận dữ liệu có thể cũ một chút trong lúc fetch ngầm bản mới</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Với thanh toán, phải dùng Network-Only để đảm bảo tính chính xác 100%.">B. Cho các request thanh toán tiền ngân hàng</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Cho các file bundle JavaScript tĩnh có mã hóa hash</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 5: CHECKLIST & HOÀN TẤT MODULE 07 -->
+  <h2>5. Checklist tự kiểm chứng — Hoàn tất Module 07</h2>
+  <div class="checklist">
+    <div>&#9989; Phân biệt sự khác nhau giữa Web Worker và Service Worker về mục đích và vòng đời.</div>
+    <div>&#9989; Hiểu cơ chế <code>postMessage</code> và <code>Transferable Objects</code> (Zero-copy memory transfer).</div>
+    <div>&#9989; Thành thạo 3 chiến lược Cache: <strong>Cache-First</strong>, <strong>Network-First</strong>, <strong>Stale-While-Revalidate</strong>.</div>
+    <div>&#9989; Nắm chắc lý do vì sao Worker không được phép truy cập DOM.</div>
+    <div>&#9989; Toàn bộ 32 test suites (199/199 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CHÚC MỪNG HOÀN THÀNH MODULE 07 -->
+  <div class="callout bridge">
+    <div class="ct">&#127881; Chúc mừng hoàn thành trọn vẹn Module 07 !</div>
+    <p>Bạn đã làm chủ hoàn toàn các cơ chế tầng sâu của Trình duyệt: Critical Rendering Path, Layout/Paint/Composite, Event Propagation &amp; Delegation, Layout Thrashing &amp; FastDOM Batching, Web Workers và Service Workers Caching.</p>
+    <p>Hãy xem trang <strong>Reference Guide Module 07</strong> để ôn tập trước khi tiến vào <strong>Module 08: V8 Engine Internals &amp; Tối ưu hóa bộ nhớ</strong> !</p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Tổng kết &amp; Tra cứu nhanh Module 07</div>
+    <div class="nt">Reference Guide · Module 07: DOM, Browser Engine &amp; Web APIs</div>
+    <p class="nd">Bản đồ kiến trúc 6 bước CRP, ma trận sự kiện DOM, bảng tra cứu Forced Reflow APIs và mẫu code Caching Strategies chuẩn PWA.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0030-layout-thrashing-reflow.html">&#8592; Bài 30</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="../reference/07-dom-browser-engine.html">Cheatsheet Module 07 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Web Workers &amp; Caching và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

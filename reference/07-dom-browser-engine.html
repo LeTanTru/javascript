@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 07 · DOM, Browser Engine &amp; Web APIs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 07 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 07 : DOM, Browser Engine &amp; Web APIs</h1>
+  <p class="subtitle">Bản đồ kiến trúc tầng sâu của Trình duyệt: Critical Rendering Path, DOM Event Propagation, Layout Thrashing prevention, Web Workers và 3 chiến lược Caching Service Workers từ Bài 28 đến Bài 31.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm trọn 4 trụ cột Browser Engine (CRP, Event Flow, FastDOM batching, Background Workers &amp; Caching).</p>
+
+  <!-- TRỤC 1: CRITICAL RENDERING PATH -->
+  <h2>1. Bảng quy chuẩn 6 bước Critical Rendering Path</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Giai đoạn</th><th>Đầu vào</th><th>Đầu ra</th><th>Tác động hiệu năng</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. DOM Tree</strong></td>
+        <td>HTML Bytes / Tokens</td>
+        <td>Cây cấu trúc DOM</td>
+        <td>Bị chặn bởi Synchronous <code>&lt;script&gt;</code> (khắc phục bằng <code>defer</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>2. CSSOM Tree</strong></td>
+        <td>CSS Rules / Stylesheets</td>
+        <td>Cây luật CSSOM</td>
+        <td><strong>Render-Blocking</strong>: Chặn render điểm ảnh để chống FOUC</td>
+      </tr>
+      <tr>
+        <td><strong>3. Render Tree</strong></td>
+        <td>DOM + CSSOM</td>
+        <td>Cây hiển thị (Visual Tree)</td>
+        <td>Loại bỏ <code>display: none</code>; giữ lại <code>visibility: hidden</code> / <code>opacity: 0</code></td>
+      </tr>
+      <tr>
+        <td><strong>4. Layout (Reflow)</strong></td>
+        <td>Render Tree Nodes</td>
+        <td>Tọa độ hình học $(x, y, w, h)$</td>
+        <td>Chạy trên CPU Main Thread, chi phí tính toán cao nhất khi DOM thay đổi</td>
+      </tr>
+      <tr>
+        <td><strong>5. Paint (Repaint)</strong></td>
+        <td>Layout Boxes</td>
+        <td>Bitmap điểm ảnh (Colors/Borders)</td>
+        <td>Vẽ các thành phần trực quan lên từng Layers</td>
+      </tr>
+      <tr>
+        <td><strong>6. Composite</strong></td>
+        <td>Layers</td>
+        <td>Màn hình hiển thị</td>
+        <td><strong>GPU Thread</strong> (60fps mượt mà cho <code>transform</code>, <code>opacity</code>)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: EVENT FLOW & BATCHING -->
+  <h2>2. Ma trận DOM Event Flow &amp; Forced Reflow APIs</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <h3>W3C DOM Event Flow</h3>
+      <p><strong>1. Capturing (true) :</strong> Window &rarr; Document &rarr; Parent &rarr; Target.</p>
+      <p><strong>2. Target :</strong> Tại chính phần tử <code>event.target</code>.</p>
+      <p><strong>3. Bubbling (false - mặc định) :</strong> Nổi ngược từ Target &rarr; Window.</p>
+      <p><code>stopPropagation()</code>: Chặn nổi bọt nhưng các listener khác trên cùng node vẫn chạy.</p>
+      <p><code>stopImmediatePropagation()</code>: Chặn nổi bọt VÀ chặn luôn mọi listener còn lại.</p>
+      <p><code>{ passive: true }</code>: Cam kết không gọi <code>preventDefault()</code> &rarr; cuộn mượt 60fps.</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>Danh sách API gây Forced Reflow</h3>
+      <p><strong>Kích thước :</strong> <code>offsetWidth</code>, <code>offsetHeight</code>, <code>clientWidth</code>, <code>clientHeight</code>.</p>
+      <p><strong>Vị trí :</strong> <code>offsetTop</code>, <code>offsetLeft</code>, <code>clientTop</code>, <code>clientLeft</code>.</p>
+      <p><strong>Cuộn :</strong> <code>scrollTop</code>, <code>scrollLeft</code>, <code>scrollWidth</code>, <code>scrollHeight</code>.</p>
+      <p><strong>Đo đạc :</strong> <code>getBoundingClientRect()</code>, <code>getComputedStyle()</code>.</p>
+      <p><strong>Quy tắc vàng FastDOM :</strong> <em>Đọc tất cả trước &rarr; Ghi tất cả sau !</em></p>
+    </div>
+  </div>
+
+  <!-- TRỤC 3: WORKERS & CACHING TEMPLATES -->
+  <h2>3. Service Worker: Bộ 3 Caching Strategies chuẩn PWA</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Caching Strategies Cheatsheet</span>
+    <pre><code><span class="cmt">// 1. Cache-First: Asset tĩnh (JS, CSS, Images, Fonts)</span>
+<span class="kw">const</span> <span class="fn">cacheFirst</span> = <span class="kw">async</span> (req, cacheName) => {
+  <span class="kw">const</span> cached = <span class="kw">await</span> caches.<span class="fn">match</span>(req);
+  <span class="kw">if</span> (cached) <span class="kw">return</span> cached;
+  <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(req);
+  <span class="kw">const</span> cache = <span class="kw">await</span> caches.<span class="fn">open</span>(cacheName);
+  cache.<span class="fn">put</span>(req, res.<span class="fn">clone</span>());
+  <span class="kw">return</span> res;
+};
+
+<span class="cmt">// 2. Network-First: Dữ liệu động (API feeds, tin tức mới nhất)</span>
+<span class="kw">const</span> <span class="fn">networkFirst</span> = <span class="kw">async</span> (req, cacheName) => {
+  <span class="kw">try</span> {
+    <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(req);
+    <span class="kw">const</span> cache = <span class="kw">await</span> caches.<span class="fn">open</span>(cacheName);
+    cache.<span class="fn">put</span>(req, res.<span class="fn">clone</span>());
+    <span class="kw">return</span> res;
+  } <span class="kw">catch</span> {
+    <span class="kw">return</span> caches.<span class="fn">match</span>(req); <span class="cmt">// Fallback khi mất mạng</span>
+  }
+};
+
+<span class="cmt">// 3. Stale-While-Revalidate: Trả cache 0ms & fetch cập nhật ngầm</span>
+<span class="kw">const</span> <span class="fn">staleWhileRevalidate</span> = <span class="kw">async</span> (req, cacheName) => {
+  <span class="kw">const</span> cached = <span class="kw">await</span> caches.<span class="fn">match</span>(req);
+  <span class="kw">const</span> update = <span class="fn">fetch</span>(req).<span class="fn">then</span>(<span class="kw">async</span> (res) => {
+    <span class="kw">const</span> cache = <span class="kw">await</span> caches.<span class="fn">open</span>(cacheName);
+    cache.<span class="fn">put</span>(req, res.<span class="fn">clone</span>());
+    <span class="kw">return</span> res;
+  });
+  <span class="kw">return</span> cached || update;
+};</code></pre>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0031-web-workers-service-workers.html">&#8592; Bài 31</a>
+    <a href="../lessons/index.html">&#127968; Mục lục khóa học</a>
+    <a href="../lessons/0032-v8-engine-pipeline.html" class="disabled">Module 08 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh:</strong> Hãy lưu trang này để ôn luyện trước các buổi phỏng vấn kỹ thuật hoặc in ra (Ctrl + P) để ôn tập offline bất kỳ lúc nào !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

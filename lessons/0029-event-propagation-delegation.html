@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 29 · Event Propagation: Bubbling vs Capturing, Event Delegation &amp; passive: true</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 07 · Bài 29 (DOM, Browser Engine &amp; Web APIs)</span>
+  <h1>Bài 29 · Event Propagation: Bubbling vs Capturing, Event Delegation &amp; <code>passive: true</code></h1>
+  <p class="subtitle">Khám phá cơ chế luân chuyển sự kiện trong cây DOM theo chuẩn W3C: 3 giai đoạn (Capture, Target, Bubble), kỹ thuật Event Delegation quản lý hàng ngàn phần tử động và tối ưu hóa cuộn trang 60fps với passive event listeners.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Phân biệt rõ ràng capturing vs bubbling phase, hiểu sự khác nhau giữa stopPropagation() vs stopImmediatePropagation(), phân biệt e.target vs e.currentTarget và áp dụng Event Delegation trong thực tế.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 28 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 28</div>
+    <p>Ở Bài 28, bạn đã biết cách Browser dựng cây DOM và Render Tree. Khi trang web đã hiển thị, người dùng bắt đầu tương tác (click, scroll, keypress). Để các tương tác này được xử lý hiệu quả và có tổ chức, DOM áp dụng mô hình <strong>Event Propagation (Lan truyền sự kiện)</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1: 3 GIAI ĐOẠN LAN TRUYỀN SỰ KIỆN -->
+  <h2>1. Mô hình 3 pha lan truyền sự kiện (W3C DOM Event Flow)</h2>
+  <p>Khi bạn click vào một thẻ <code>&lt;button&gt;</code> nằm sâu trong trang web, sự kiện <strong>không</strong> xảy ra ngay lập tức tại button đó mà trải qua một hành trình 3 pha :</p>
+  <ol>
+    <li><strong>Phase 1: Capturing Phase (Pha Bắt giữ) :</strong> Sự kiện bắt đầu từ đỉnh cây DOM (<code>Window</code> &rarr; <code>Document</code> &rarr; <code>&lt;html&gt;</code> &rarr; <code>&lt;body&gt;</code> &rarr; các thẻ cha) đi dần xuống trước khi chạm đến target.</li>
+    <li><strong>Phase 2: Target Phase (Pha Đích) :</strong> Sự kiện đến chính xác phần tử mục tiêu (<code>event.target</code>).</li>
+    <li><strong>Phase 3: Bubbling Phase (Pha Nổi bọt) :</strong> Sự kiện nổi ngược từ phần tử mục tiêu trở lên đỉnh cây DOM (<code>Window</code>). <em>Đây là pha mặc định mà hầu hết các listener hoạt động.</em></li>
+  </ol>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cú pháp đăng ký Capturing vs Bubbling</span>
+    <pre><code><span class="cmt">// Mặc định: Lắng nghe ở pha BUBBLING (tham số thứ 3 là false)</span>
+element.<span class="fn">addEventListener</span>(<span class="str">'click'</span>, handler);
+
+<span class="cmt">// Lắng nghe ở pha CAPTURING (truyền true hoặc { capture: true })</span>
+element.<span class="fn">addEventListener</span>(<span class="str">'click'</span>, handler, <span class="kw">true</span>);
+element.<span class="fn">addEventListener</span>(<span class="str">'click'</span>, handler, { capture: <span class="kw">true</span> });</code></pre>
+  </div>
+
+  <!-- PHẦN 2: DỪNG SỰ KIỆN -->
+  <h2>2. <code>stopPropagation()</code> vs <code>stopImmediatePropagation()</code> vs <code>preventDefault()</code></h2>
+  <table class="data">
+    <thead>
+      <tr><th>Phương thức</th><th>Tác dụng</th><th>Các listener khác trên cùng node ?</th><th>Hành vi mặc định của Browser ?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>e.stopPropagation()</code></td>
+        <td>Dừng sự kiện lan truyền lên/xuống các node cha/con.</td>
+        <td><strong>Vẫn tiếp tục chạy</strong></td>
+        <td>Không bị chặn</td>
+      </tr>
+      <tr>
+        <td><code>e.stopImmediatePropagation()</code></td>
+        <td>Dừng lan truyền <strong>VÀ chặn luôn</strong> các listener còn lại trên cùng node.</td>
+        <td><strong>Bị hủy bỏ ngay</strong></td>
+        <td>Không bị chặn</td>
+      </tr>
+      <tr>
+        <td><code>e.preventDefault()</code></td>
+        <td>Chặn hành vi mặc định (chặn mở link <code>&lt;a&gt;</code>, submit form).</td>
+        <td>Vẫn chạy bình thường</td>
+        <td><strong>Bị chặn hoàn toàn</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 3: EVENT DELEGATION -->
+  <h2>3. Event Delegation (Ủy quyền sự kiện)</h2>
+  <p>Giả sử bạn có danh sách 1,000 dòng sản phẩm. Thay vì gắn 1,000 hàm lắng nghe vào từng thẻ <code>&lt;li&gt;</code> (gây tốn RAM và rò rỉ bộ nhớ), bạn chỉ gắn <strong>1 listener duy nhất</strong> lên thẻ cha <code>&lt;ul&gt;</code> và tận dụng <strong>Event Bubbling</strong> :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Event Delegation chuẩn mực với Element.closest()</span>
+    <pre><code><span class="kw">const</span> todoList = document.<span class="fn">getElementById</span>(<span class="str">'todo-list'</span>);
+
+todoList.<span class="fn">addEventListener</span>(<span class="str">'click'</span>, (event) => {
+  <span class="cmt">// Tìm phần tử button xóa gần nhất từ event.target</span>
+  <span class="kw">const</span> deleteBtn = event.target.<span class="fn">closest</span>(<span class="str">'.delete-btn'</span>);
+  <span class="kw">if</span> (deleteBtn && todoList.<span class="fn">contains</span>(deleteBtn)) {
+    <span class="kw">const</span> itemId = deleteBtn.dataset.id;
+    <span class="fn">deleteTodoItem</span>(itemId);
+  }
+});</code></pre>
+  </div>
+
+  <!-- PHẦN 4: PASSIVE LISTENERS -->
+  <h2>4. Tối ưu cuộn trang 60fps với <code>{ passive: true }</code></h2>
+  <p>Khi người dùng vuốt màn hình cảm ứng (touch) hoặc lăn chuột (wheel), trình duyệt phải đợi JavaScript thực thi listener xong để xem bạn có gọi <code>e.preventDefault()</code> để chặn cuộn hay không. Sự chậm trễ này gây ra hiện tượng <strong>Scroll Jank (khựng khung hình)</strong>.</p>
+
+  <div class="callout tip">
+    <div class="ct">&#128640; { passive: true } giải phóng UI Thread</div>
+    <p>Bằng cách truyền <code>{ passive: true }</code>, bạn cam kết với trình duyệt: <em>"Tôi sẽ không bao giờ gọi preventDefault() trong hàm này"</em>. Trình duyệt sẽ cho phép luồng GPU Compositor cuộn trang ngay lập tức ở 60fps mà không cần chờ đợi JavaScript !</p>
+  </div>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Phân biệt chính xác giữa <code>event.target</code> và <code>event.currentTarget</code> ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! event.target là phần tử gốc nơi người dùng click vào; event.currentTarget là phần tử đang gắn addEventListener mà hàm xử lý đang chạy.">A. event.target là phần tử phát sinh sự kiện gốc; event.currentTarget là phần tử đang gắn listener</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Ngược lại.">B. event.target là phần tử gắn listener; event.currentTarget là phần tử được click</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Chúng hoàn toàn có thể khác nhau khi sự kiện nổi bọt (bubbling).">C. Hai thuộc tính này luôn luôn trỏ về cùng một đối tượng DOM</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Một thẻ button có 3 event listeners gắn vào cùng sự kiện 'click'. Listener thứ nhất gọi <code>e.stopImmediatePropagation()</code>. Điều gì xảy ra ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! stopPropagation() mới chỉ chặn nổi bọt lên cha, còn stopImmediatePropagation chặn cả các listener khác trên cùng node.">A. Listener 2 và 3 vẫn chạy bình thường, chỉ chặn nổi bọt lên thẻ cha</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! stopImmediatePropagation() lập tức ngăn chặn sự kiện nổi bọt VÀ chặn luôn việc thực thi của Listener 2 và Listener 3.">B. Listener 2 và 3 bị hủy bỏ ngay lập tức, và sự kiện cũng không lan truyền lên thẻ cha</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Toàn bộ trang web bị đứng</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 6: CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng — Bài 29</h2>
+  <div class="checklist">
+    <div>&#9989; Mô tả rành mạch 3 pha: Capturing (1) &rarr; Target (2) &rarr; Bubbling (3).</div>
+    <div>&#9989; Phân biệt sự khác nhau giữa <code>stopPropagation()</code> và <code>stopImmediatePropagation()</code>.</div>
+    <div>&#9989; Tự tin áp dụng <strong>Event Delegation</strong> với <code>Element.closest()</code> cho dynamic lists.</div>
+    <div>&#9989; Giải thích được cơ chế tối ưu hóa cuộn mượt mà của <code>{ passive: true }</code>.</div>
+    <div>&#9989; Toàn bộ 30 test suites (187/187 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo trong Module 07</div>
+    <div class="nt">Bài 30 · Layout Thrashing, Repaint, Reflow &amp; Tối ưu hiệu năng DOM Rendering</div>
+    <p class="nd">Giải mã căn bệnh giật lag phổ biến nhất: Forced Synchronous Layout, FastDOM pattern và kỹ thuật DocumentFragment / Virtual DOM batching.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0028-critical-rendering-path.html">&#8592; Bài 28</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0030-layout-thrashing-reflow.html">Bài 30 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Event Propagation và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

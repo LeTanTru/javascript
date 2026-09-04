@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 05 · Execution Context: Creation Phase vs Execution Phase &amp; Variable Object</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 02 · Bài 05</span>
+  <h1>Bài 05 · Execution Context: Creation Phase vs Execution Phase &amp; Variable Object</h1>
+  <p class="subtitle">Khám phá "chiếc hộp điều phối" của JavaScript Engine: cơ chế quét mã trong Creation Phase, mô hình Call Stack Frame và bản chất của Variable Object trước khi dòng code đầu tiên kịp chạy.</p>
+  <p class="meta-line">&#9203; ~18 phút &middot; &#127919; Mục tiêu: Giải thích cặn kẽ 2 giai đoạn sống của Execution Context, phân biệt bản chất khởi tạo Function Declaration vs <code>var</code>, và đọc chuẩn xác 100% các câu hỏi phỏng vấn về code output.</p>
+
+  <!-- BẮC CẦU TỪ MODULE 01 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Module 01 sang Module 02</div>
+    <p>Ở Module 01, chúng ta đã nắm vững các giá trị được phân bổ ra sao giữa Call Stack và Memory Heap. Nhưng thực thể nào thực sự <strong>quản lý</strong> các ngăn nhớ đó trên Call Stack ? Khi bạn gọi một hàm, JavaScript Engine chuẩn bị môi trường thực thi như thế nào trước khi chạy từng câu lệnh ?</p>
+    <p>Chào mừng bạn đến với Module 02 &mdash; nơi chúng ta sẽ khám phá bộ máy điều phối trung tâm của JavaScript : <strong>Execution Context (Ngữ cảnh thực thi)</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Execution Context là gì ? Ba loại Context trong Runtime</h2>
+  <p>Một <strong>Execution Context (EC)</strong> là một môi trường trừu tượng do JavaScript Engine tạo ra để theo dõi, quản lý việc đánh giá và thực thi mã nguồn. Bất cứ đoạn mã JavaScript nào khi chạy cũng đều nằm bên trong một Execution Context cụ thể.</p>
+
+  <p>Trong JavaScript Runtime, có <strong>3 loại Execution Context</strong> :</p>
+
+  <div class="code-block">
+    <span class="code-label">Cấu trúc 3 loại Execution Context</span>
+    <pre><code><span class="cmt">// 1. Global Execution Context (GEC):</span>
+<span class="cmt">// - Được tạo DUY NHẤT một lần ngay khi chương trình khởi động.</span>
+<span class="cmt">// - Tạo ra Global Object (window trên Browser, global trên Node.js) và binding 'this'.</span>
+
+<span class="cmt">// 2. Function Execution Context (FEC):</span>
+<span class="cmt">// - Được tạo MỖI KHI một hàm được GỌI (invoked), KHÔNG phải lúc khai báo.</span>
+<span class="cmt">// - Mỗi lời gọi hàm sinh ra một FEC riêng biệt với không gian biến độc lập.</span>
+
+<span class="cmt">// 3. Eval Execution Context:</span>
+<span class="cmt">// - Được tạo khi thực thi chuỗi mã bên trong hàm eval() (ít dùng vì rủi ro bảo mật & hiệu năng).</span></code></pre>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Vòng đời của Execution Context: Hai giai đoạn sống</h2>
+  <p>Mỗi khi một Execution Context được kích hoạt, nó trải qua đúng <strong>hai giai đoạn riêng biệt</strong> :</p>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Giai đoạn</th>
+        <th>Thời điểm</th>
+        <th>Hành vi của Engine</th>
+        <th>Trạng thái biến &amp; hàm</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Creation Phase</strong> (Khởi tạo / Biên dịch)</td>
+        <td>Khi hàm vừa được gọi, trước khi chạy bất kỳ dòng code nào</td>
+        <td>Quét toàn bộ phạm vi để tạo <strong>Variable Object (VO)</strong>, Scope Chain và <code>this</code></td>
+        <td>
+          &bull; <code>function foo(){}</code> &rarr; lưu cả tên và con trỏ thân hàm.<br>
+          &bull; <code>var x</code> &rarr; lưu tên biến, gán sẵn <code>undefined</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>2. Execution Phase</strong> (Thực thi)</td>
+        <td>Ngay sau khi Creation Phase hoàn tất</td>
+        <td>Chạy từng dòng lệnh từ trên xuống dưới theo thứ tự xuất hiện</td>
+        <td>Thực hiện các phép gán giá trị thật (<code>x = 10</code>), tính toán biểu thức, gọi hàm khác.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Giải phẫu Creation Phase &amp; Khái niệm Variable Object (VO)</h2>
+  <p>Trong chuẩn ES3/ES5, thành phần lưu trữ các biến và hàm của Execution Context được gọi là <strong>Variable Object (VO)</strong> (với Function Context, nó được gọi là <strong>Activation Object - AO</strong> và có thêm thuộc tính <code>arguments</code>). Trong các phiên bản ES6+, khái niệm này được chuẩn hóa thành <strong>Environment Record</strong>.</p>
+
+  <p>Thứ tự quét của Engine trong Creation Phase diễn ra nghiêm ngặt như sau :</p>
+
+  <div class="code-block">
+    <span class="code-label">Thứ tự ưu tiên trong Creation Phase</span>
+    <pre><code><span class="cmt">// Bước 1: Khởi tạo đối tượng arguments (đối với Function Context)</span>
+<span class="cmt">// Bước 2: Quét tất cả FUNCTION DECLARATIONS (Khai báo hàm tường minh)</span>
+<span class="cmt">//         -> Đưa tên hàm vào VO và trỏ thẳng tới vùng nhớ chứa thân hàm trên Heap!</span>
+<span class="cmt">// Bước 3: Quét tất cả VARIABLE DECLARATIONS với từ khóa 'var'</span>
+<span class="cmt">//         -> Đưa tên biến vào VO và gán giá trị khởi tạo là undefined.</span>
+<span class="cmt">//         -> ĐẶC BIỆT: Nếu tên biến 'var' TRÙNG với tên function đã quét ở Bước 2,</span>
+<span class="cmt">//            Engine sẽ BỎ QUA khai báo var, giữ nguyên hàm!</span></code></pre>
+  </div>
+
+  <div class="callout why">
+    <div class="ct">&#128161; Tại sao Function Declaration gọi trước được nhưng Function Expression thì không ?</div>
+    <p>Hãy phân tích đoạn mã kinh điển sau :</p>
+    <div class="code-block">
+      <span class="code-label">JavaScript</span>
+      <pre><code><span class="fn">sayHi</span>();   <span class="cmt">// &#8594; Chạy bình thường: "Hi!"</span>
+<span class="fn">sayBye</span>();  <span class="cmt">// &#8594; TypeError: sayBye is not a function !</span>
+
+<span class="kw">function</span> <span class="fn">sayHi</span>() { console.<span class="fn">log</span>(<span class="str">"Hi!"</span>); }
+<span class="kw">var</span> sayBye = <span class="kw">function</span>() { console.<span class="fn">log</span>(<span class="str">"Bye!"</span>); };</code></pre>
+    </div>
+    <p><strong>Bản chất dưới Creation Phase :</strong></p>
+    <ul>
+      <li><code>sayHi</code> là Function Declaration &rarr; trong Creation Phase, <code>VO.sayHi</code> đã trỏ trực tiếp tới hàm thực thi trên Heap &rarr; gọi lúc nào cũng được.</li>
+      <li><code>sayBye</code> được khai báo bằng <code>var</code> &rarr; trong Creation Phase, <code>VO.sayBye = undefined</code>. Khi sang Execution Phase, dòng gọi hàm <code>sayBye()</code> tương đương với <code>undefined()</code> &rarr; JavaScript Engine quăng <strong>TypeError</strong> (vì undefined không thể gọi như hàm) chứ không phải ReferenceError !</li>
+    </ul>
+  </div>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Call Stack &amp; Quản lý vòng đời (Push / Pop)</h2>
+  <p>JavaScript là ngôn ngữ <strong>đơn luồng (Single-threaded)</strong>, có nghĩa là tại một thời điểm chỉ có duy nhất một Execution Context được thực thi. V8 Engine sử dụng <strong>Call Stack (Ngăn xếp lời gọi hàm)</strong> để điều phối luồng thực thi này :</p>
+
+  <ol>
+    <li>Khi chương trình bắt đầu &rarr; <strong>Global Execution Context (GEC)</strong> được khởi tạo và đẩy (Push) vào đáy của Call Stack.</li>
+    <li>Mỗi khi gặp một lời gọi hàm &rarr; một <strong>Function Execution Context (FEC)</strong> mới được tạo và Push lên đỉnh Call Stack. Execution Context trên cùng luôn là context đang hoạt động (Active Context).</li>
+    <li>Khi hàm chạy xong (gặp câu lệnh <code>return</code> hoặc kết thúc block) &rarr; FEC tương ứng được rút (Pop) khỏi đỉnh Call Stack, giải phóng các biến cục bộ (trừ khi có Closure), trao quyền thực thi lại cho context nằm ngay phía dưới.</li>
+  </ol>
+
+  <div class="callout danger">
+    <div class="ct">&#9888; Hiện tượng Stack Overflow (Tràn ngăn xếp)</div>
+    <p>Call Stack có giới hạn kích thước vùng nhớ vật lý (thường khoảng 10.000 đến 16.000 frames trên Chrome V8). Nếu một hàm đệ quy không có điểm dừng (infinite recursion), các FEC liên tục bị Push vào mà không bao giờ được Pop ra, dẫn tới lỗi kinh điển :</p>
+    <div class="code-block">
+      <span class="code-label">Console Error</span>
+      <pre><code><span class="cmt">RangeError: Maximum call stack size exceeded</span></code></pre>
+    </div>
+  </div>
+
+  <!-- GÓC PHỎNG VẤN SENIOR -->
+  <h2>5. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Hãy giải thích chính xác những gì xảy ra trong Creation Phase của một hàm ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Trong Creation Phase, Engine thực hiện 3 nhiệm vụ chính trước khi chạy code: (1) Khởi tạo Variable Environment (Environment Record), phân tích đối tượng arguments và các tham số truyền vào; (2) Quét và đăng ký toàn bộ khai báo hàm (Function Declarations) vào môi trường với tham chiếu đầy đủ; (3) Quét các khai báo biến `var` và cấp phát tên biến với giá trị khởi tạo `undefined`. Đồng thời, Engine thiết lập Scope Chain (liên kết với outer environment) và xác định binding cho từ khóa `this`."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Đoạn mã sau in ra gì trong console và tại sao ?</div>
+    <div class="code-block">
+      <span class="code-label">Câu hỏi phỏng vấn trắc nghiệm</span>
+      <pre><code>console.<span class="fn">log</span>(<span class="kw">typeof</span> foo);
+<span class="kw">var</span> foo = <span class="str">"Antigravity"</span>;
+<span class="kw">function</span> <span class="fn">foo</span>() {}
+console.<span class="fn">log</span>(foo);</code></pre>
+    </div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Kết quả lần lượt là <code>'function'</code> và <code>'Antigravity'</code>. Lý do: Trong Creation Phase, Function Declaration <code>foo</code> được ưu tiên đăng ký trước vào Variable Object. Khi Engine duyệt đến <code>var foo</code>, vì định danh <code>foo</code> đã tồn tại nên khai báo <code>var</code> bị bỏ qua. Do đó tại dòng đầu tiên, <code>foo</code> là một hàm. Khi bước sang Execution Phase, lệnh gán <code>foo = 'Antigravity'</code> được thực thi, ghi đè biến <code>foo</code> thành string, nên dòng log thứ hai in ra <code>'Antigravity'</code>."</em></p>
+  </div>
+
+  <!-- QUIZ CHECKPOINT -->
+  <h2>6. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Execution Context của một hàm được tạo ra vào thời điểm nào ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Khi khai báo, Engine chỉ lưu định nghĩa hàm vào bộ nhớ Heap chứ chưa hề tạo context thực thi.">A. Khi hàm được khai báo trong mã nguồn.</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Mỗi lần hàm được GỌI (invoked), một Function Execution Context mới toanh được tạo ra và push vào đỉnh Call Stack.">B. Mỗi khi hàm được gọi thực thi (invoked).</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Trình duyệt tải file script chỉ tạo Global Execution Context, không tạo context cho từng hàm.">C. Khi trình duyệt tải xong file JavaScript.</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Output của đoạn mã sau là gì ?<br><code>console.log(a); var a = 5;</code></div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Trong Creation Phase, biến a được đăng ký vào Variable Object và khởi tạo mặc định là undefined. Đến Execution Phase, lệnh console.log chạy trước lệnh gán a = 5.">A. undefined</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Biến a đã được khai báo trong Creation Phase nên không bị ném ReferenceError.">B. ReferenceError: a is not defined</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Lệnh gán a = 5 chỉ diễn ra ở dòng thứ hai của Execution Phase.">C. 5</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>7. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Đã hiểu rõ 3 loại Execution Context: Global, Function, Eval.</div>
+    <div>&#9989; Nắm chắc sự khác biệt giữa Creation Phase (quét khởi tạo) và Execution Phase (chạy mã).</div>
+    <div>&#9989; Giải thích được tại sao Function Declaration được ưu tiên hơn <code>var</code> trùng tên trong Creation Phase.</div>
+    <div>&#9989; Hiểu cơ chế Push / Pop của Call Stack và nguyên nhân gây Stack Overflow.</div>
+    <div>&#9989; Toàn bộ 43 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 06 :</div>
+    <p>Chúng ta vừa thấy rằng trong Creation Phase, biến <code>var</code> được đăng ký và gán ngay giá trị <code>undefined</code>. Nhờ đó, việc truy cập trước khi gán chỉ trả về <code>undefined</code> chứ không gây lỗi chết chương trình.</p>
+    <p><em>"Nhưng với <code>let</code> và <code>const</code> trong ES6, liệu chúng có trải qua Creation Phase không ? Nếu có, tại sao việc truy cập trước dòng khai báo lại quăng lỗi nghiêm trọng <strong>ReferenceError: Cannot access before initialization</strong> ? Khái niệm <strong>Temporal Dead Zone (TDZ)</strong> thực chất hoạt động như thế nào dưới tầng sâu của JavaScript Engine ?"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 06 · Hoisting, Temporal Dead Zone (TDZ) &amp; Sự khác biệt <code>var</code> vs <code>let</code> vs <code>const</code></div>
+    <p class="nd">Giải mã cơ chế Hoisting thực sự, bản chất vùng chết tạm thời (TDZ) trong Declarative Environment Record, và lý do tại sao var rò rỉ ra ngoài block scope.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../reference/01-types-memory-coercion.html">&#8592; Tổng kết Module 01</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy chạy <code>npm test</code> trong thư mục <code>practice</code>, quan sát 6 test case của Bài 05 và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

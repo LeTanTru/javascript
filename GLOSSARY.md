@@ -103,3 +103,12 @@ _Avoid_: Object serializer, type stringifier
 **Symbol.toStringTag**:
 Well-known Symbol trong ECMAScript cho phép tùy biến chuỗi mô tả nhãn kiểu dữ liệu trả về khi gọi `Object.prototype.toString(O)`.
 _Avoid_: Custom tag, class tag
+
+**Creation Phase (Khởi tạo Execution Context)**:
+Giai đoạn đầu tiên trong vòng đời của một Execution Context, diễn ra trước khi bất kỳ dòng code nào được thực thi. Engine quét toàn bộ phạm vi để cấp phát Variable Environment, đăng ký Function Declarations với tham chiếu đầy đủ và khởi tạo các biến `var` với giá trị mặc định `undefined`.
+_Avoid_: Pre-execution, compilation stage
+
+**Variable Object (VO) / Activation Object (AO)**:
+Cấu trúc dữ liệu trừu tượng trong đặc tả ES3 gắn liền với Execution Context chứa các biến, tham số hàm (arguments) và khai báo hàm. Trong ES6+, khái niệm này được chuẩn hóa và thay thế bởi Environment Record (Declarative và Object Environment Record).
+_Avoid_: Scope dictionary, variable container
+

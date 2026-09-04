@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 36 · 50+ Bẫy JavaScript &amp; Phân tích Code Output kinh điển (Meta / Google / Uber)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 10 · Bài 36</span>
+  <h1>Bài 36 · 50+ Bẫy JavaScript &amp; Phân tích Code Output kinh điển (Meta / Google / Uber)</h1>
+  <p class="subtitle">Tổng ôn toàn bộ các cạm bẫy hóc búa nhất thường xuất hiện trong các buổi phỏng vấn kỹ thuật Senior/Lead tại các tập đoàn công nghệ lớn: từ Annex B semantics, Sparse Arrays, Key Coercion, Class Private Fields đến Proxy Invariants và Microtask Starvation.</p>
+  <p class="meta-line">&#9203; ~30 phút &middot; &#127919; Mục tiêu: Đạt phản xạ 100% chính xác khi phân tích mọi đoạn code trick, giải thích bản chất tường minh theo chuẩn ECMA-262 mà không cần phỏng đoán.</p>
+
+  <!-- BẮC CẦU TỪ MODULE 09 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối bước vào Module 10: Tổng ôn &amp; Mock Interview</div>
+    <p>Sau khi đã trang bị đầy đủ kiến thức từ Memory Model, Closures, Prototypes, Event Loop, DOM Rendering, V8 Internals cho đến Module Systems, giờ là lúc bạn thử lửa với các câu hỏi phỏng vấn thực chiến có tính phân loại cao nhất.</p>
+  </div>
+
+  <!-- PHẦN 1: BẪY SCOPING & ANNEX B -->
+  <h2>1. Bẫy Scoping: Khai báo Hàm trong Block Scope (Annex B)</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Đoạn mã phỏng vấn kinh điển</span>
+    <pre><code><span class="kw">var</span> a = <span class="num">1</span>;
+<span class="kw">function</span> <span class="fn">test</span>() {
+  a = <span class="num">10</span>;
+  <span class="kw">return</span>;
+  <span class="kw">function</span> <span class="fn">a</span>() {}
+}
+<span class="fn">test</span>();
+console.<span class="fn">log</span>(a); <span class="cmt">// Kết quả in ra là gì?</span></code></pre>
+  </div>
+  <div class="callout tip">
+    <div class="ct">&#128161; Giải mã chuẩn ECMA-262</div>
+    <p>Hàm <code>function a() {}</code> được hoist lên đầu phạm vi của hàm <code>test()</code>. Do đó, bên trong <code>test()</code> tồn tại một biến cục bộ tên là <code>a</code>. Lệnh <code>a = 10</code> thực chất gán lại giá trị cho biến cục bộ này mà không chạm tới biến <code>var a = 1</code> ở phạm vi toàn cục. Kết quả in ra <strong>1</strong>.</p>
+  </div>
+
+  <!-- PHẦN 2: SPARSE ARRAYS & ARRAY HOLES -->
+  <h2>2. Bẫy Mảng thưa (Sparse Arrays) &amp; Array Holes</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Array Holes vs Iterator Methods</span>
+    <pre><code><span class="kw">const</span> arr = [<span class="num">1</span>, <span class="num">2</span>, , <span class="num">4</span>]; <span class="cmt">// arr[2] là hole (empty)</span>
+<span class="kw">const</span> result = arr.<span class="fn">map</span>(x =&gt; x * <span class="num">2</span>);
+
+console.<span class="fn">log</span>(result);         <span class="cmt">// [2, 4, &lt;1 empty item&gt;, 8]</span>
+console.<span class="fn">log</span>(<span class="num">2</span> <span class="kw">in</span> result);     <span class="cmt">// false (index 2 không tồn tại thuộc tính)</span>
+console.<span class="fn">log</span>(Object.<span class="fn">keys</span>(arr)); <span class="cmt">// ["0", "1", "3"] (Bỏ qua hole hoàn toàn)</span></code></pre>
+  </div>
+
+  <!-- PHẦN 3: OBJECT KEY COERCION & ITERATION ORDER -->
+  <h2>3. Bẫy Ép kiểu Object Keys &amp; Thứ tự duyệt thuộc tính (ES6+)</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Loại Key</th><th>Quy tắc ép kiểu &amp; Thứ tự duyệt trong Object</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Object Key</strong></td>
+        <td>Bị ép thành String qua <code>toString()</code>: <code>obj[{}]</code> tương đương <code>obj["[object Object]"]</code>. Các object khác nhau đều trỏ vào cùng một chuỗi này.</td>
+      </tr>
+      <tr>
+        <td><strong>Thứ tự duyệt (Iteration Order)</strong></td>
+        <td>1. <strong>Số nguyên dương tăng dần</strong> (vd: "0", "1", "2")<br>
+        2. <strong>Chuỗi ký tự theo thứ tự chèn</strong> (Insertion order)<br>
+        3. <strong>Symbols theo thứ tự chèn</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 4: TO PRIMITIVE PRIORITY -->
+  <h2>4. Ma trận ưu tiên ép kiểu ngầm định: <code>Symbol.toPrimitive</code></h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Custom ToPrimitive Implementation</span>
+    <pre><code><span class="kw">const</span> item = {
+  <span class="fn">valueOf</span>() { <span class="kw">return</span> <span class="num">10</span>; },
+  <span class="fn">toString</span>() { <span class="kw">return</span> <span class="str">'20'</span>; },
+  [Symbol.toPrimitive](hint) {
+    <span class="kw">if</span> (hint === <span class="str">'number'</span>) <span class="kw">return</span> <span class="num">100</span>;
+    <span class="kw">if</span> (hint === <span class="str">'string'</span>) <span class="kw">return</span> <span class="str">'Antigravity'</span>;
+    <span class="kw">return</span> <span class="num">50</span>; <span class="cmt">// hint === 'default'</span>
+  }
+};
+
+console.<span class="fn">log</span>(item + <span class="num">10</span>);   <span class="cmt">// 60  (Gọi ToPrimitive với hint "default")</span>
+console.<span class="fn">log</span>(+item);       <span class="cmt">// 100 (Gọi ToPrimitive với hint "number")</span>
+console.<span class="fn">log</span>(`${item}!`);  <span class="cmt">// "Antigravity!" (Gọi ToPrimitive với hint "string")</span></code></pre>
+  </div>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn mã sau in ra gì trong JavaScript hiện đại?<br><code>function Monster() { this.name = 'Godzilla'; return { beast: true }; }<br>console.log(new Monster().name);</code></div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Khi hàm constructor return một Object tường minh, toán tử 'new' sẽ bỏ qua instance vừa tạo (this) và trả về chính object được return đó. Vì { beast: true } không có thuộc tính name, kết quả là undefined.">A. undefined</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Object return đã ghi đè instance this.">B. "Godzilla"</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. TypeError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Thứ tự in ra console của đoạn mã sau là gì?<br><code>Promise.resolve().then(() =&gt; console.log(1));<br>setTimeout(() =&gt; console.log(2), 0);<br>Promise.resolve().then(() =&gt; console.log(3));<br>console.log(4);</code></div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! 4 (đồng bộ Call Stack) -&gt; 1 &amp; 3 (Microtask Queue được vét cạn) -&gt; 2 (Macrotask Timer ở vòng Event Loop tiếp theo).">A. 4, 1, 3, 2</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Microtasks có độ ưu tiên cao hơn Macrotasks.">B. 4, 2, 1, 3</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. 1, 3, 4, 2</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 6: CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng — Bài 36</h2>
+  <div class="checklist">
+    <div>&#9989; Phân tích chính xác bẫy <strong>Function Declaration Hoisting</strong> trong Block và Function Scope.</div>
+    <div>&#9989; Nắm chắc hành vi của <strong>Array Holes</strong> trong <code>map</code>, <code>filter</code>, <code>forEach</code>.</div>
+    <div>&#9989; Giải thích được thứ tự duyệt thuộc tính của Object theo chuẩn <strong>ECMA-262</strong>.</div>
+    <div>&#9989; Nắm vững quy tắc trả về của <strong>Constructor Function</strong> (Primitive vs Object).</div>
+    <div>&#9989; Làm chủ <strong>8 bẫy phỏng vấn</strong> được kiểm chứng qua unit test trong <code>practice/interview-traps-code-output.test.js</code>.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 37 · Giả lập Live-Coding Interview: 3 bài toán phân loại ứng viên Senior/Lead</div>
+    <p class="nd">Trực tiếp giải 3 bài toán Live-coding kinh điển: Custom Promise A+ Compliance, Deep Object Diffing &amp; Patching, và Asynchronous Task Pipeline Scheduler.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0035-esm-vs-cjs.html">&#8592; Bài 35</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0037-senior-live-coding-challenges.html">Bài 37 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 8 bài test Interview Traps và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

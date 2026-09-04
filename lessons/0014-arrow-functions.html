@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 14 · Arrow Functions &amp; Lexical this (Tại sao không có arguments, prototype, new)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 04 · Bài 14</span>
+  <h1>Bài 14 · Arrow Functions &amp; Lexical <code>this</code> (Tại sao không có <code>arguments</code>, <code>prototype</code>, <code>new</code>)</h1>
+  <p class="subtitle">Giải mã cơ chế kế thừa lexical context của Arrow Function, lý do call/apply/bind hoàn toàn bất lực, và 3 bẫy chết người khi sử dụng trong Object Methods &amp; Event Handlers.</p>
+  <p class="meta-line">&#9203; ~18 phút &middot; &#127919; Mục tiêu: Hiểu rõ cơ chế tra cứu this của Arrow Function qua Scope Chain, phân tích lý do Engine tước bỏ 3 tính năng truyền thống, và nhận diện chính xác khi nào NÊN / KHÔNG NÊN dùng.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 13 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 13</div>
+    <p>Ở Bài 13, chúng ta đã nắm chắc 4 quy tắc vàng xác định <code>this</code> cho các hàm thông thường (Default, Implicit, Explicit, New Binding). Tuy nhiên, một trong những nỗi đau lớn nhất của JavaScript thời kỳ trước là hiện tượng <em>Implicit Binding Loss</em> trong các hàm callback bất đồng bộ (như <code>setTimeout</code> hay UI event handlers).</p>
+    <p>Để khắc phục triệt để vấn đề này, ES6 giới thiệu <strong>Arrow Functions (Hàm mũi tên)</strong>. Nhưng Arrow Function không chỉ là cú pháp viết ngắn gọn; bên dưới tầng V8, nó vận hành theo một triết lý hoàn toàn khác biệt: <strong>Lexical `this`</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Bản chất Lexical <code>this</code>: Khi `this` trở thành một biến Scope</h2>
+  <p>Quy tắc quan trọng nhất cần ghi nhớ :</p>
+
+  <p><em>"Arrow Function <strong>hoàn toàn KHÔNG CÓ</strong> ràng buộc `this` riêng (No `this` binding). Khi gặp từ khóa `this` bên trong Arrow Function, JavaScript Engine coi `this` giống hệt như một biến thông thường và tra cứu nó dọc theo <strong>Scope Chain</strong> từ môi trường từ vựng (Lexical Environment) bao bọc bên ngoài."</em></p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Thí nghiệm Lexical this trong Callback</span>
+    <pre><code><span class="kw">function</span> <span class="fn">Counter</span>() {
+  <span class="kw">this</span>.count = <span class="num">0</span>;
+
+  <span class="cmt">// Dùng Regular Function &#8594; Mất context, this trỏ ra window/undefined !</span>
+  setTimeout(<span class="kw">function</span> () {
+    <span class="cmt">// console.log(this.count++); // &#8594; NaN hoặc TypeError !</span>
+  }, <span class="num">100</span>);
+
+  <span class="cmt">// Dùng Arrow Function &#8594; Kế thừa trực tiếp 'this' của Counter() !</span>
+  setTimeout(() => {
+    <span class="kw">this</span>.count++;
+    console.<span class="fn">log</span>(<span class="str">"Count hiện tại:"</span>, <span class="kw">this</span>.count); <span class="cmt">// &#8594; In ra chính xác !</span>
+  }, <span class="num">100</span>);
+}
+
+<span class="kw">new</span> <span class="fn">Counter</span>();</code></pre>
+  </div>
+
+  <div class="callout danger">
+    <div class="ct">&#9888; Tại sao call(), apply(), bind() vô tác dụng với Arrow Function ?</div>
+    <p>Vì Arrow Function không hề có internal slot lưu trữ ngữ cảnh <code>this</code>, nên khi bạn cố tình gọi <code>arrowFn.call(context)</code> hoặc <code>arrowFn.bind(context)</code>, Engine sẽ <strong>hoàn toàn bỏ qua tham số đầu tiên</strong> ! Bạn không thể ép buộc Arrow Function đổi context bằng bất kỳ API nào.</p>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Bộ ba "bị tước bỏ": Tại sao không có <code>arguments</code>, <code>prototype</code>, <code>new</code> ?</h2>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Thành phần bị thiếu</th>
+        <th>Hiện tượng khi cố tình truy cập / sử dụng</th>
+        <th>Lý do kỹ thuật bên dưới Engine</th>
+        <th>Giải pháp chuẩn hiện đại</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong><code>arguments</code></strong></td>
+        <td>Sẽ đọc đối tượng <code>arguments</code> của <strong>hàm cha bao quanh nó</strong> (nếu có).</td>
+        <td>Arrow Function được thiết kế tinh gọn cho lập trình hàm, không phân bổ đối tượng arguments riêng.</td>
+        <td>Dùng <strong>Rest Parameters (<code>...args</code>)</strong></td>
+      </tr>
+      <tr>
+        <td><strong><code>prototype</code></strong></td>
+        <td>Trả về <strong><code>undefined</code></strong> (<code>arrow.prototype === undefined</code>).</td>
+        <td>Arrow Function không được dùng để làm khuôn mẫu đối tượng; Engine tiết kiệm vùng nhớ Heap bằng cách không cấp phát prototype.</td>
+        <td>Dùng Regular Function hoặc <code>class</code></td>
+      </tr>
+      <tr>
+        <td><strong>Toán tử <code>new</code></strong></td>
+        <td>Ném <code>TypeError: arrow is not a constructor</code>.</td>
+        <td>Arrow Function <strong>không có internal method <code>[[Construct]]</code></strong>, chỉ có <code>[[Call]]</code>.</td>
+        <td>Dùng Regular Constructor hoặc <code>class</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Ba cái bẫy "chết người" khi dùng Arrow Functions</h2>
+
+  <h3>Bẫy 1: Khai báo Method trong Object Literal</h3>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Sai lầm kinh điển trong Object Literal</span>
+    <pre><code><span class="kw">const</span> calculator = {
+  factor: <span class="num">2</span>,
+  <span class="cmt">// BẪY: Cặp ngoặc nhọn `{}` của Object KHÔNG tạo Scope !</span>
+  <span class="cmt">// Lexical Scope bên ngoài của hàm này là Global/Window Scope !</span>
+  multiply: (x) => x * <span class="kw">this</span>.factor,
+
+  <span class="cmt">// ĐÚNG ĐẮN: Dùng Method Shorthand của ES6</span>
+  <span class="fn">multiplyCorrect</span>(x) {
+    <span class="kw">return</span> x * <span class="kw">this</span>.factor; <span class="cmt">// 'this' là calculator</span>
+  }
+};
+
+console.<span class="fn">log</span>(calculator.<span class="fn">multiply</span>(<span class="num">5</span>));        <span class="cmt">// &#8594; NaN (this.factor là undefined) !</span>
+console.<span class="fn">log</span>(calculator.<span class="fn">multiplyCorrect</span>(<span class="num">5</span>)); <span class="cmt">// &#8594; 10 (Chuẩn xác)</span></code></pre>
+  </div>
+
+  <h3>Bẫy 2: Khai báo Prototype Method</h3>
+  <p>Nếu bạn gán <code>User.prototype.greet = () => { console.log(this.name); }</code>, <code>this</code> vĩnh viễn trỏ về nơi đoạn code đó được thực thi (Global) thay vì trỏ tới từng instance được tạo ra bởi <code>new User()</code>.</p>
+
+  <h3>Bẫy 3: DOM Event Listener cần truy cập phần tử click</h3>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Event Listener Trap</span>
+    <pre><code><span class="kw">const</span> btn = document.<span class="fn">getElementById</span>(<span class="str">"my-btn"</span>);
+
+<span class="cmt">// BẪY: this không phải là <button> mà là window !</span>
+btn.<span class="fn">addEventListener</span>(<span class="str">"click"</span>, () => {
+  <span class="kw">this</span>.classList.<span class="fn">toggle</span>(<span class="str">"active"</span>); <span class="cmt">// &#8594; TypeError: Cannot read properties of undefined !</span>
+});
+
+<span class="cmt">// ĐÚNG: Dùng Regular function hoặc e.currentTarget</span>
+btn.<span class="fn">addEventListener</span>(<span class="str">"click"</span>, <span class="kw">function</span> () {
+  <span class="kw">this</span>.classList.<span class="fn">toggle</span>(<span class="str">"active"</span>); <span class="cmt">// 'this' chính là <button></span>
+});</code></pre>
+  </div>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Tại sao Arrow Function không thể gọi bằng toán tử new ? Giải thích dưới góc độ ECMAScript internals ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Trong đặc tả ECMAScript, một hàm chỉ có thể dùng với `new` khi nó sở hữu internal method `[[Construct]]`. Arrow Function chỉ được Engine trang bị internal method `[[Call]]` mà bị khuyết thiếu hoàn toàn `[[Construct]]`. Khi Engine phát hiện lệnh `new` kích hoạt trên một hàm thiếu `[[Construct]]`, nó lập tức ném ra ngoại lệ `TypeError: ... is not a constructor`. Ngoài ra, vì không thể khởi tạo đối tượng, Engine cũng lược bỏ luôn thuộc tính `prototype` để tiết kiệm bộ nhớ Heap."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Khi nào NÊN và KHÔNG NÊN dùng Arrow Function trong dự án ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"- **NÊN DÙNG:** Trong các hàm callbacks (như `map`, `filter`, `setTimeout`, Promise chaining), các hàm tiện ích pure function, hoặc khi muốn bảo toàn `this` của component cha (như Class Fields trong React component).<br>
+    - **KHÔNG NÊN DÙNG:** Khi khai báo phương thức của Object literal, phương thức trên `prototype`, hàm khởi tạo Constructor, và các Event Handlers mà logic cần truy cập trực tiếp vào DOM element thông qua `this`."</em></p>
+  </div>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code sau in ra kết quả gì ?<br>
+    <code>const obj = { id: 1, get: () => this.id }; console.log(obj.get.call({ id: 2 }));</code></div>
+    <button class="opt" data-correct="false" data-explain="Sai! call() hoàn toàn bất lực trong việc thay đổi this của Arrow Function.">A. 2</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Object literal không tạo scope nên this không phải là obj.">B. 1</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Arrow function kế thừa lexical this từ môi trường ngoài (Global/Window). Trong môi trường này this.id là undefined, và lệnh call() bị bỏ qua hoàn toàn.">C. undefined</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Giá trị của arrowFn.prototype đối với một Arrow Function là gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Function thông thường mới có prototype là một object rỗng {}.">A. {}</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Arrow Function không có internal method [[Construct]] nên Engine không hề cấp phát thuộc tính prototype cho nó, giá trị là undefined.">B. undefined</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Không có prototype nào bằng null trong trường hợp này.">C. null</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Nắm chắc nguyên lý Lexical <code>this</code> của Arrow Function qua Scope Chain.</div>
+    <div>&#9989; Hiểu rõ vì sao <code>call/apply/bind</code> hoàn toàn bất lực với Arrow Function.</div>
+    <div>&#9989; Giải thích được lý do Engine tước bỏ <code>arguments</code>, <code>prototype</code> và <code>new</code>.</div>
+    <div>&#9989; Nhận diện và tránh được 3 bẫy dùng sai Arrow Function trong thực tế.</div>
+    <div>&#9989; Toàn bộ 96 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 15 :</div>
+    <p>Chúng ta đã biết <code>call</code>, <code>apply</code> và <code>bind</code> là 3 phương thức tối thượng để thiết lập Explicit Binding cho các hàm thông thường.</p>
+    <p><em>"Làm thế nào mà JavaScript có thể gán một hàm lên một đối tượng lạ và kích hoạt nó với context chỉ định ? Bằng cách nào <code>bind()</code> có thể vừa khóa chết <code>this</code> vừa hỗ trợ Currying (Partial Application), nhưng vẫn mở đường cho toán tử <code>new</code> ghi đè ? Hãy sẵn sàng <strong>tự tay live-coding polyfill cho `call`, `apply` và `bind`</strong> trong 10 phút !"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo (Hoàn tất Module 04)</div>
+    <div class="nt">Bài 15 · Live-coding Polyfills: Tự viết `Function.prototype.call`, `apply` và `bind`</div>
+    <p class="nd">Kỹ thuật Property Hijacking, sử dụng Symbol tránh xung đột key và cài đặt thuật toán Hard Binding hoàn chỉnh.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0013-this-binding.html">&#8592; Bài 13</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để xem 6 bài test của Bài 14 và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

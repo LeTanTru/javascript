@@ -212,6 +212,15 @@ _Avoid_: Forced this, manual context
 Quy tắc xác định `this` khi một hàm constructor được kích hoạt với từ khóa `new`. `this` được Engine tự động gán vào instance đối tượng mới vừa được tạo trên Memory Heap. Có độ ưu tiên cao hơn cả Hard Binding.
 _Avoid_: Constructor this, class binding
 
+**Lexical this**:
+Cơ chế xác định ngữ cảnh của Arrow Function trong ES6: không tạo ra ràng buộc `this` riêng mà kế thừa trực tiếp giá trị `this` từ phạm vi từ vựng (Lexical Scope) bao quanh nó thông qua Scope Chain. Hoàn toàn miễn nhiễm trước `call`, `apply`, và `bind`.
+_Avoid_: Static this, scope this
+
+**Rest Parameters (...args)**:
+Cú pháp trong ES6 cho phép gom toàn bộ các tham số còn lại truyền vào hàm thành một mảng JavaScript thực sự (`Array.isArray(args) === true`), thay thế đối tượng giả mảng lỗi thời `arguments` của ES5.
+_Avoid_: Arguments array, spread parameter
+
+
 
 
 

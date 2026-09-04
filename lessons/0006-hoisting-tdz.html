@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 06 · Hoisting, Temporal Dead Zone (TDZ) &amp; Sự khác biệt var vs let vs const</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 02 · Bài 06</span>
+  <h1>Bài 06 · Hoisting, Temporal Dead Zone (TDZ) &amp; Sự khác biệt <code>var</code> vs <code>let</code> vs <code>const</code></h1>
+  <p class="subtitle">Phá vỡ lầm tưởng "let/const không bị hoisting", giải mã 3 bước của vòng đời biến (Declaration &rarr; Initialization &rarr; Assignment) và bản chất vùng chết tạm thời dưới góc nhìn Environment Record.</p>
+  <p class="meta-line">&#9203; ~16 phút &middot; &#127919; Mục tiêu: Chứng minh let/const có bị hoisting, giải thích nguyên nhân sâu xa của lỗi ReferenceError trong TDZ, và phân biệt rạch ròi cơ chế Block Scope trong vòng lặp for.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 05 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 05</div>
+    <p>Ở Bài 05, chúng ta đã biết trong Creation Phase, biến <code>var</code> được đăng ký vào Variable Object và gán sẵn giá trị <code>undefined</code>. Nhờ đó, việc gọi biến trước dòng khai báo chỉ nhận về <code>undefined</code>.</p>
+    <p>Nhiều tài liệu nhập môn thường giải thích rằng: <em>"let và const không bị hoisting"</em>. <strong>Đây là một hiểu lầm tai hại !</strong> Cả <code>let</code> và <code>const</code> đều được Engine quét và đăng ký trong Creation Phase, nhưng chúng bị giam cầm trong một cơ chế bảo vệ nghiêm ngặt: <strong>Temporal Dead Zone (TDZ)</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Bản chất Hoisting: Vòng đời 3 bước của một biến</h2>
+  <p>Hoisting <strong>không phải</strong> là JavaScript Engine "cắt dán" code của bạn đưa lên đầu file. Mã nguồn vật lý không hề di chuyển. Hoisting thực chất là hệ quả của chu trình 2 pha (Creation Phase quét trước, Execution Phase chạy sau).</p>
+
+  <p>Một biến trong JavaScript trải qua <strong>3 bước vòng đời</strong> riêng biệt :</p>
+  <ol>
+    <li><strong>Declaration (Khai báo) :</strong> Đăng ký tên biến vào Environment Record của Execution Context.</li>
+    <li><strong>Initialization (Khởi tạo) :</strong> Cấp phát vùng nhớ vật lý và gán giá trị khởi tạo mặc định ban đầu.</li>
+    <li><strong>Assignment (Gán giá trị) :</strong> Gán giá trị cụ thể do lập trình viên chỉ định trong code.</li>
+  </ol>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Từ khóa</th>
+        <th>Thời điểm Declaration</th>
+        <th>Thời điểm Initialization</th>
+        <th>Thời điểm Assignment</th>
+        <th>Truy cập trước khi khai báo ?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>var</code></td>
+        <td>Creation Phase</td>
+        <td><strong>Creation Phase</strong> (gán ngay <code>undefined</code>)</td>
+        <td>Execution Phase (dòng code gán)</td>
+        <td>Trả về <code>undefined</code></td>
+      </tr>
+      <tr>
+        <td><code>let</code></td>
+        <td>Creation Phase</td>
+        <td><strong>Execution Phase</strong> (khi chạy tới dòng code)</td>
+        <td>Execution Phase (dòng code gán)</td>
+        <td><strong>ReferenceError</strong> (dính TDZ)</td>
+      </tr>
+      <tr>
+        <td><code>const</code></td>
+        <td>Creation Phase</td>
+        <td><strong>Execution Phase</strong> (khi chạy tới dòng code)</td>
+        <td><strong>Cùng lúc với Initialization</strong></td>
+        <td><strong>ReferenceError</strong> (dính TDZ)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Temporal Dead Zone (TDZ) là gì ? Chứng minh let/const CÓ bị Hoisting</h2>
+  <p><strong>Temporal Dead Zone (Vùng chết tạm thời)</strong> là khoảng thời gian (từ lúc bắt đầu bước vào Block Scope cho đến khi dòng khai báo <code>let</code> hoặc <code>const</code> được thực thi). Trong khoảng này, biến đã được Declarative Environment Record nhận diện (đã Declare), nhưng <strong>chưa được cấp phát ô nhớ (Uninitialized)</strong>.</p>
+
+  <div class="callout danger">
+    <div class="ct">&#9888; Bằng chứng thép: Chứng minh let/const THỰC SỰ bị Hoisting</div>
+    <p>Nếu <code>let</code> không bị hoisting, JavaScript Engine sẽ tìm biến ngược lên scope cha bên ngoài. Nhưng hãy quan sát ví dụ sau :</p>
+    <div class="code-block">
+      <span class="code-label">JavaScript &mdash; Hiện tượng Shadowing trong TDZ</span>
+      <pre><code><span class="kw">let</span> message = <span class="str">"Global scope"</span>;
+
+<span class="kw">function</span> <span class="fn">checkTDZ</span>() {
+  <span class="cmt">// Nếu let KHÔNG bị hoisting, dòng dưới sẽ in ra "Global scope" !</span>
+  console.<span class="fn">log</span>(message); <span class="cmt">// &#8594; ReferenceError: Cannot access 'message' before initialization !</span>
+
+  <span class="kw">let</span> message = <span class="str">"Local block"</span>;
+}
+
+<span class="fn">checkTDZ</span>();</code></pre>
+    </div>
+    <p><strong>Giải thích bản chất :</strong> Trong Creation Phase của hàm <code>checkTDZ</code>, Engine đã quét và phát hiện khai báo <code>let message</code> ở phạm vi cục bộ. Nó lập tức "khoá" định danh <code>message</code> trong TDZ của hàm này, ngăn không cho Scope Chain nhảy ra ngoài lấy <code>"Global scope"</code>. Nếu không có Hoisting, lỗi này không bao giờ xảy ra !</p>
+  </div>
+
+  <div class="callout warn">
+    <div class="ct">&#9888; Bẫy typeof trong TDZ: Phá vỡ sự an toàn tuyệt đối</div>
+    <p>Bình thường, <code>typeof</code> là toán tử an toàn nhất JS vì nó không bao giờ quăng lỗi kể cả khi biến chưa từng được khai báo :</p>
+    <div class="code-block">
+      <span class="code-label">JavaScript</span>
+      <pre><code>console.<span class="fn">log</span>(<span class="kw">typeof</span> undeclaredVariable); <span class="cmt">// &#8594; "undefined" (An toàn)</span>
+
+console.<span class="fn">log</span>(<span class="kw">typeof</span> tdzVariable);         <span class="cmt">// &#8594; ReferenceError !</span>
+<span class="kw">let</span> tdzVariable = <span class="num">10</span>;</code></pre>
+    </div>
+    <p>TDZ là trường hợp <strong>duy nhất</strong> trong toàn bộ ngôn ngữ JavaScript có thể khiến toán tử <code>typeof</code> ném ra ngoại lệ <code>ReferenceError</code>.</p>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Bảng so sánh <code>var</code> vs <code>let</code> vs <code>const</code></h2>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Tiêu chí</th>
+        <th><code>var</code> (ES3)</th>
+        <th><code>let</code> (ES6)</th>
+        <th><code>const</code> (ES6)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Phạm vi (Scope)</strong></td>
+        <td>Function Scope (Rò rỉ khỏi <code>if</code>, <code>for</code>, <code>{}</code>)</td>
+        <td>Block Scope (Đóng gói chặt trong <code>{}</code>)</td>
+        <td>Block Scope (Đóng gói chặt trong <code>{}</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Hoisting &amp; TDZ</strong></td>
+        <td>Hoisted &rarr; Gán sẵn <code>undefined</code></td>
+        <td>Hoisted &rarr; Dính TDZ</td>
+        <td>Hoisted &rarr; Dính TDZ</td>
+      </tr>
+      <tr>
+        <td><strong>Khai báo lại (Re-declare)</strong></td>
+        <td>Cho phép vô tư trong cùng scope</td>
+        <td>Bị cấm (Ném SyntaxError ngay Creation Phase)</td>
+        <td>Bị cấm (Ném SyntaxError ngay Creation Phase)</td>
+      </tr>
+      <tr>
+        <td><strong>Gán lại (Re-assign)</strong></td>
+        <td>Cho phép gán lại bất kỳ lúc nào</td>
+        <td>Cho phép gán lại bất kỳ lúc nào</td>
+        <td>Bị cấm (Ném TypeError khi gán lại)</td>
+      </tr>
+      <tr>
+        <td><strong>Global Object Pollution</strong></td>
+        <td>Tạo thuộc tính trên <code>window</code> (ví dụ: <code>window.x</code>)</td>
+        <td>Không dính vào <code>window</code> (Declarative Environment)</td>
+        <td>Không dính vào <code>window</code> (Declarative Environment)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 4 -->
+  <h2>4. Bẫy kinh điển: Vòng lặp <code>for</code> với <code>var</code> vs <code>let</code></h2>
+  <p>Đây là câu hỏi phỏng vấn xuất hiện với tần suất trên 90% ở mọi buổi phỏng vấn JavaScript :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; So sánh vòng lặp for</span>
+    <pre><code><span class="cmt">// TRƯỜNG HỢP 1: DÙNG VAR</span>
+<span class="kw">for</span> (<span class="kw">var</span> i = <span class="num">0</span>; i &lt; <span class="num">3</span>; i++) {
+  setTimeout(() => console.<span class="fn">log</span>(<span class="str">"var:"</span>, i), <span class="num">100</span>);
+}
+<span class="cmt">// &#8594; In ra: "var: 3", "var: 3", "var: 3"</span>
+
+<span class="cmt">// TRƯỜNG HỢP 2: DÙNG LET</span>
+<span class="kw">for</span> (<span class="kw">let</span> j = <span class="num">0</span>; j &lt; <span class="num">3</span>; j++) {
+  setTimeout(() => console.<span class="fn">log</span>(<span class="str">"let:"</span>, j), <span class="num">100</span>);
+}
+<span class="cmt">// &#8594; In ra: "let: 0", "let: 1", "let: 2" !</span></code></pre>
+  </div>
+
+  <div class="callout why">
+    <div class="ct">&#128161; Tại sao lại có sự khác biệt kỳ diệu này ?</div>
+    <p><strong>Với <code>var</code> :</strong> <code>var</code> có function scope nên chỉ tồn tại <strong>duy nhất một biến <code>i</code></strong> cho toàn bộ vòng lặp. Khi 100ms sau callback của <code>setTimeout</code> chạy, vòng lặp đã kết thúc và biến <code>i</code> đã có giá trị là <code>3</code>. Cả 3 callback đều trỏ tới cùng 1 ô nhớ.</p>
+    <p><strong>Với <code>let</code> (Theo đặc tả ES6 §13.7.4.8) :</strong> Trong mỗi vòng lặp (iteration), JavaScript Engine tự động tạo ra một <strong>Lexical Environment (Block Scope) hoàn toàn mới</strong> ! Biến <code>j</code> của mỗi vòng lặp được copy giá trị từ vòng lặp trước và nằm ở một ô nhớ độc lập. Do đó, hàm closure của mỗi <code>setTimeout</code> giữ tham chiếu đến biến <code>j</code> riêng biệt của chính vòng lặp đó.</p>
+  </div>
+
+  <!-- GÓC PHỎNG VẤN SENIOR -->
+  <h2>5. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Tại sao nói "let và const không bị hoisting" là một nhận định sai lầm ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Nhận định đó sai vì nhầm lẫn giữa Hoisting và Initialization. Cả `let` và `const` đều được JavaScript Engine quét và đưa vào Declarative Environment Record ngay trong Creation Phase (tức là đã được Hoist). Bằng chứng rõ nhất là hiện tượng Shadowing: nếu trong một block scope ta khai báo `let x`, thì mọi lệnh truy cập `x` trước dòng đó sẽ lập tức ném ReferenceError chứ không thể kế thừa giá trị `x` từ scope cha. Điều này chứng minh Engine đã biết trước sự tồn tại của `x` cục bộ ngay từ đầu block."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Từ khóa const có giúp một Object trở nên bất biến (Immutable) hoàn toàn không ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Không. `const` trong JavaScript chỉ bảo vệ <strong>ràng buộc định danh (Variable Binding)</strong> trên Call Stack, tức là ngăn chặn việc gán lại biến sang ô nhớ khác (re-assignment). Nó không bảo vệ cấu trúc bên trong của đối tượng trên Memory Heap. Để biến một Object thành bất biến thật sự, lập trình viên phải sử dụng <code>Object.freeze()</code> (chỉ đóng băng 1 cấp nông) hoặc tự viết hàm deepFreeze đệ quy."</em></p>
+  </div>
+
+  <!-- QUIZ CHECKPOINT -->
+  <h2>6. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code sau in ra gì ?<br><code>let a = 1; { console.log(a); let a = 2; }</code></div>
+    <button class="opt" data-correct="false" data-explain="Sai! let a = 2 bên trong block đã tạo TDZ cho định danh 'a' trong block đó, che khuất biến 'a = 1' bên ngoài.">A. 1</button>
+    <button class="opt" data-correct="false" data-explain="Sai! let không được gán undefined trong Creation Phase như var.">B. undefined</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Lệnh console.log(a) nằm trong Temporal Dead Zone của biến 'let a = 2' cục bộ, ném ra ReferenceError: Cannot access 'a' before initialization.">C. ReferenceError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Điểm khác biệt quan trọng nhất giữa biến var và biến let khi khai báo ở ngoài cùng (Top-level) trong trình duyệt là gì ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! var ở top-level trở thành thuộc tính của window (window.x). Trong khi let/const được lưu trong Declarative Environment Record của Global Scope, không gây ô nhiễm window.">A. var trở thành thuộc tính của đối tượng window, còn let thì không.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Cả hai đều có thể truy cập được trong toàn bộ chương trình nếu ở top-level.">B. let chỉ dùng được trong 1 file script, còn var dùng được cho tất cả các file.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! let ở top-level vẫn cho phép gán lại giá trị như bình thường.">C. var cho phép gán lại giá trị, còn let thì không.</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>7. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Đã hiểu 3 bước của vòng đời biến: Declaration, Initialization, Assignment.</div>
+    <div>&#9989; Nắm chắc cơ chế Temporal Dead Zone (TDZ) và chứng minh được <code>let/const</code> có bị hoisting.</div>
+    <div>&#9989; Hiểu rõ bẫy <code>typeof</code> duy nhất gây lỗi <code>ReferenceError</code> trong TDZ.</div>
+    <div>&#9989; Giải thích được tại sao vòng lặp <code>for (let ...)</code> lưu được giá trị trong asynchronous closures.</div>
+    <div>&#9989; Toàn bộ 50 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 07 :</div>
+    <p>Chúng ta vừa thấy rằng trong vòng lặp <code>for (let ...)</code>, mỗi vòng lặp tạo ra một Block Scope riêng, và hàm callback trong <code>setTimeout</code> có khả năng "nhớ" và truy xuất được giá trị của biến ở scope đó kể cả khi vòng lặp đã chạy xong từ lâu.</p>
+    <p><em>"Cơ chế nào bên dưới JavaScript Engine cho phép một hàm ghi nhớ phạm vi từ vựng nơi nó sinh ra ? <strong>Lexical Environment</strong> và <strong>Scope Chain</strong> được tổ chức như thế nào dưới dạng danh sách liên kết (Linked List), và tại sao <strong>Closures</strong> lại là một trong những tính năng mạnh mẽ &amp; dễ gây rò rỉ bộ nhớ nhất JavaScript ?"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 07 · Lexical Environment, Scope Chain &amp; Bản chất Closures</div>
+    <p class="nd">Giải phẫu danh sách liên kết của Scope Chain, cơ chế phân giải biến Identifier Resolution và cách V8 đóng gói Closure trên Memory Heap.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0005-execution-context.html">&#8592; Bài 05</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy chạy <code>npm test</code> trong thư mục <code>practice</code>, quan sát 7 test case của Bài 06 và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

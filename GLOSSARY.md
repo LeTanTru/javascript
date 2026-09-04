@@ -112,3 +112,10 @@ _Avoid_: Pre-execution, compilation stage
 Cấu trúc dữ liệu trừu tượng trong đặc tả ES3 gắn liền với Execution Context chứa các biến, tham số hàm (arguments) và khai báo hàm. Trong ES6+, khái niệm này được chuẩn hóa và thay thế bởi Environment Record (Declarative và Object Environment Record).
 _Avoid_: Scope dictionary, variable container
 
+**Hoisting**:
+Hành vi của JavaScript Engine khi phân tách quá trình biên dịch (Creation Phase) và thực thi (Execution Phase), trong đó các khai báo hàm và biến được ghi nhận vào Environment Record trước khi bất kỳ dòng code nào chạy. Bản chất mã nguồn không hề di chuyển vật lý.
+_Avoid_: Code lifting, moving to top
+
+**Temporal Dead Zone (TDZ)**:
+Khoảng thời gian trong vòng đời của một biến bắt đầu từ khi bước vào phạm vi khối (Block Scope) cho đến khi câu lệnh khai báo (`let`/`const`) được thực thi. Trong TDZ, biến đã được khai báo nhưng chưa được khởi tạo (Uninitialized); mọi thao tác đọc/ghi đều ném ra ngoại lệ `ReferenceError`.
+_Avoid_: Dead scope, uninitialized zone

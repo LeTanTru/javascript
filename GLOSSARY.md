@@ -160,5 +160,14 @@ _Avoid_: Function prototype, prototype property
 Hiện tượng khi một thuộc tính được gán trực tiếp lên đối tượng con (Own Property) có cùng tên với thuộc tính nằm trên Prototype Chain của nó, dẫn đến việc thuộc tính con che khuất thuộc tính cha trong các thao tác đọc mà không làm thay đổi giá trị trên prototype cha.
 _Avoid_: Property overriding, class overwrite
 
+**[[Construct]]**:
+Internal method trong đặc tả ECMAScript được gắn liền với các hàm có khả năng làm hàm khởi tạo (Constructor Functions, ES6 Classes). Được kích hoạt bởi toán tử `new` để thực thi chuỗi 4 bước: tạo object rỗng, liên kết prototype, bind `this` và giải quyết The Return Trap.
+_Avoid_: Function builder, class instantiator
+
+**new.target**:
+Meta-property được bổ sung trong ES6 trỏ tới hàm constructor đã được kích hoạt trực tiếp thông qua toán tử `new`. Có giá trị là `undefined` nếu hàm được gọi theo cách thông thường; được dùng làm nền tảng cho Safe Constructor Pattern và kiểm soát tính kế thừa trong các lớp con.
+_Avoid_: Constructor detector, target property
+
+
 
 

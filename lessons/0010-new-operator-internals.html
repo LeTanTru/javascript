@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 10 · Function Constructor, `new` Operator Internals &amp; `Object.create()`</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 03 · Bài 10</span>
+  <h1>Bài 10 · Function Constructor, <code>new</code> Operator Internals &amp; <code>Object.create()</code></h1>
+  <p class="subtitle">Giải phẫu 4 bước bí mật của toán tử new theo chuẩn ECMA-262, phân tích bẫy return Object vs Primitive, tự tay live-coding polyfill myNew() và ứng dụng meta property new.target.</p>
+  <p class="meta-line">&#9203; ~18 phút &middot; &#127919; Mục tiêu: Hiểu rõ cơ chế khởi tạo đối tượng, viết thành thạo polyfill myNew trong 5 phút và áp dụng Safe Constructor Pattern trong thực chiến.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 09 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 09</div>
+    <p>Ở Bài 09, chúng ta đã phân định rạch ròi giữa <code>prototype</code> (khuôn mẫu trên Constructor Function) và <code>[[Prototype]]</code> (chuỗi kế thừa trên Instance). Khi ta gọi <code>const user = new User("Nam")</code>, instance <code>user</code> tự động liên kết với <code>User.prototype</code>.</p>
+    <p>Nhưng cơ chế nào thực sự liên kết chúng ? Toán tử <strong><code>new</code></strong> đã làm những gì bên dưới hậu trường của JavaScript Engine ? Tại sao một hàm constructor đôi khi lại bỏ qua giá trị <code>return</code> của bạn, và khi nào nó lại ghi đè toàn bộ instance ?</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Giải phẫu 4 bước của toán tử <code>new</code> (ECMA-262 &sect;13.3.5.1)</h2>
+  <p>Khi JavaScript Engine bắt gặp từ khóa <code>new Constructor(...args)</code>, nó tự động kích hoạt internal method <strong><code>[[Construct]]</code></strong> và thực thi đúng <strong>4 bước tuần tự</strong> sau :</p>
+
+  <ol>
+    <li>
+      <strong>Tạo Object rỗng mới trên Memory Heap :</strong> Cấp phát một vùng nhớ đối tượng hoàn toàn mới: <code>const instance = {}</code>.
+    </li>
+    <li>
+      <strong>Liên kết Prototype Chain :</strong> Gán <code>instance.[[Prototype]] = Constructor.prototype</code> (sử dụng <code>Object.create</code> hoặc <code>Object.setPrototypeOf</code>). Nhờ bước này, instance thừa hưởng mọi phương thức trên prototype của constructor.
+    </li>
+    <li>
+      <strong>Gán ngữ cảnh <code>this</code> và thực thi hàm :</strong> Kích hoạt hàm <code>Constructor</code> với từ khóa <code>this</code> được trỏ thẳng vào <code>instance</code> vừa tạo: <code>const result = Constructor.apply(instance, args)</code>. Các lệnh như <code>this.name = name</code> sẽ ghi trực tiếp thuộc tính vào instance.
+    </li>
+    <li>
+      <strong>Kiểm tra giá trị trả về (The Return Trap) :</strong>
+      <ul>
+        <li>Nếu hàm <code>Constructor</code> trả về một <strong>Object hoặc Function</strong> (và không phải <code>null</code>) &rarr; Toán tử <code>new</code> sẽ <strong>trả về Object đó</strong> (ghi đè instance ban đầu !).</li>
+        <li>Nếu hàm trả về <strong>Primitive</strong> (Number, String, Boolean, Symbol, BigInt, Undefined, Null) &rarr; Giá trị return bị <strong>hoàn toàn bỏ qua</strong>, toán tử <code>new</code> trả về <code>instance</code> đã tạo ở bước 1.</li>
+      </ul>
+    </li>
+  </ol>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Live-coding: Tự viết Polyfill <code>myNew()</code> chuẩn 100%</h2>
+  <p>Đây là bài toán live-coding kiểm tra JavaScript Core xuất hiện thường xuyên nhất trong các vòng phỏng vấn kỹ thuật :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt polyfill myNew</span>
+    <pre><code><span class="kw">function</span> <span class="fn">myNew</span>(Constructor, ...args) {
+  <span class="cmt">// Bước 1 &amp; 2: Tạo object mới và liên kết [[Prototype]] tới Constructor.prototype</span>
+  <span class="kw">const</span> instance = Object.<span class="fn">create</span>(Constructor.prototype);
+
+  <span class="cmt">// Bước 3: Thực thi hàm constructor với this là instance</span>
+  <span class="kw">const</span> result = Constructor.<span class="fn">apply</span>(instance, args);
+
+  <span class="cmt">// Bước 4: Kiểm tra kết quả trả về</span>
+  <span class="kw">const</span> isObject = (<span class="kw">typeof</span> result === <span class="str">"object"</span> &amp;&amp; result !== <span class="kw">null</span>) || <span class="kw">typeof</span> result === <span class="str">"function"</span>;
+
+  <span class="kw">return</span> isObject ? result : instance;
+}</code></pre>
+  </div>
+
+  <div class="callout danger">
+    <div class="ct">&#9888; Bẫy kinh điển: Constructor return Primitive vs Object</div>
+    <div class="code-block">
+      <span class="code-label">JavaScript &mdash; Thí nghiệm Return Trap</span>
+      <pre><code><span class="kw">function</span> <span class="fn">Foo</span>() {
+  <span class="kw">this</span>.x = <span class="num">10</span>;
+  <span class="kw">return</span> <span class="str">"Hello World"</span>; <span class="cmt">// Return Primitive &#8594; BỊ LỜ ĐI !</span>
+}
+<span class="kw">const</span> foo = <span class="kw">new</span> <span class="fn">Foo</span>();
+console.<span class="fn">log</span>(foo.x); <span class="cmt">// &#8594; 10 (Vẫn nhận instance thông thường)</span>
+
+<span class="kw">function</span> <span class="fn">Bar</span>() {
+  <span class="kw">this</span>.x = <span class="num">10</span>;
+  <span class="kw">return</span> { override: <span class="kw">true</span> }; <span class="cmt">// Return Object &#8594; GHI ĐÈ INSTANCE !</span>
+}
+<span class="kw">const</span> bar = <span class="kw">new</span> <span class="fn">Bar</span>();
+console.<span class="fn">log</span>(bar.x);        <span class="cmt">// &#8594; undefined !</span>
+console.<span class="fn">log</span>(bar.override); <span class="cmt">// &#8594; true (bar chính là object được return)</span></code></pre>
+    </div>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. <code>new.target</code> &amp; Safe Constructor Pattern</h2>
+  <p>Trong ES6, <strong><code>new.target</code></strong> là một meta-property được tạo ra để phát hiện xem một hàm hoặc constructor có đang được gọi thông qua từ khóa <code>new</code> hay không :</p>
+  <ul>
+    <li>Khi gọi thông thường <code>Fn()</code>: <code>new.target</code> có giá trị là <strong><code>undefined</code></strong>.</li>
+    <li>Khi gọi với <code>new Fn()</code>: <code>new.target</code> trỏ trực tiếp tới chính hàm <code>Fn</code>.</li>
+  </ul>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Safe Constructor Pattern</span>
+    <pre><code><span class="kw">function</span> <span class="fn">User</span>(name) {
+  <span class="cmt">// Nếu lập trình viên quên gõ 'new', tự động kích hoạt 'new' thay họ</span>
+  <span class="kw">if</span> (!<span class="kw">new</span>.target) {
+    <span class="kw">return new</span> <span class="fn">User</span>(name);
+  }
+  <span class="kw">this</span>.name = name;
+}
+
+<span class="kw">const</span> u1 = <span class="kw">new</span> <span class="fn">User</span>(<span class="str">"Alice"</span>);
+<span class="kw">const</span> u2 = <span class="fn">User</span>(<span class="str">"Bob"</span>); <span class="cmt">// Không có 'new' nhưng vẫn tạo instance an toàn !</span>
+
+console.<span class="fn">log</span>(u2 <span class="kw">instanceof</span> User); <span class="cmt">// &#8594; true</span>
+console.<span class="fn">log</span>(u2.name);            <span class="cmt">// &#8594; "Bob"</span></code></pre>
+  </div>
+
+  <!-- PHẦN 4 -->
+  <h2>4. So sánh <code>new Constructor()</code> vs <code>Object.create()</code></h2>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Tiêu chí</th>
+        <th><code>new Constructor()</code></th>
+        <th><code>Object.create(proto)</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Có chạy mã hàm khởi tạo không ?</strong></td>
+        <td><strong>CÓ</strong> (Thực thi toàn bộ code trong hàm constructor)</td>
+        <td><strong>KHÔNG</strong> (Chỉ thiết lập liên kết prototype, không gọi bất kỳ hàm nào)</td>
+      </tr>
+      <tr>
+        <td><strong>Khởi tạo thuộc tính riêng</strong></td>
+        <td>Dễ dàng thông qua các phép gán <code>this.prop = val</code></td>
+        <td>Cần truyền thêm <code>PropertyDescriptorMap</code> ở tham số thứ 2 (dài dòng hơn)</td>
+      </tr>
+      <tr>
+        <td><strong>Tạo object không prototype</strong></td>
+        <td>Không thể (luôn có <code>[[Prototype]]</code>)</td>
+        <td><strong>Có thể</strong> thông qua <code>Object.create(null)</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Nếu một constructor function trả về `null`, toán tử `new` sẽ trả về gì ? Tại sao ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Toán tử `new` sẽ trả về **instance vừa được tạo**, chứ không trả về `null`. Mặc dù trong JavaScript `typeof null === 'object'` (do bug lịch sử 3-bit type tag), nhưng đặc tả ECMAScript §13.3.5.1 quy định rõ: toán tử `new` chỉ trả về giá trị return khi giá trị đó là một Object thực sự theo Type(result) === Object. Trong mô hình của spec, Null là một Primitive Type độc lập, do đó nó bị bỏ qua giống hệt như số hay chuỗi."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Hãy tự viết lại hàm Object.create bằng cú pháp ES5 chỉ trong 4 dòng code ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Trước khi có `Object.create` trong ES5, các lập trình viên sử dụng kỹ thuật tạo một hàm tạm F rỗng:
+    `function create(proto) { function F() {} F.prototype = proto; return new F(); }`. Kỹ thuật này tận dụng toán tử `new` để gán `proto` vào `[[Prototype]]` của instance mới mà không cần thực thi logic nghiệp vụ nào."</em></p>
+  </div>
+
+  <!-- PHẦN 6 -->
+  <h2>6. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code sau in ra kết quả gì ?<br>
+    <code>function Test() { this.val = 1; return { val: 2 }; } const t = new Test(); console.log(t.val);</code></div>
+    <button class="opt" data-correct="false" data-explain="Sai! Khi constructor trả về một Object thực sự, instance ban đầu bị ghi đè.">A. 1</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Theo bước 4 của toán tử new: hàm trả về object { val: 2 } nên giá trị trả về của new Test() chính là object đó, in ra 2.">B. 2</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Không có lỗi xảy ra.">C. undefined</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Khi gọi một hàm thông thường (không có từ khóa new), giá trị của new.target bên trong hàm đó là gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! window chỉ là giá trị mặc định của this trong non-strict mode, không liên quan đến new.target.">A. window / globalThis</button>
+    <button class="opt" data-correct="false" data-explain="Sai! new.target không bao giờ nhận giá trị null.">B. null</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Khi không được gọi bằng 'new', new.target luôn có giá trị là undefined. Đây là căn cứ của Safe Constructor Pattern.">C. undefined</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>7. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Thuộc lòng 4 bước của toán tử <code>new</code> theo đặc tả ECMAScript.</div>
+    <div>&#9989; Tự tay code được polyfill <code>myNew()</code> hoàn chỉnh mà không cần nhìn tài liệu.</div>
+    <div>&#9989; Hiểu rõ bản chất The Return Trap (Object vs Primitive) trong constructor function.</div>
+    <div>&#9989; Ứng dụng thành thạo <code>new.target</code> để viết Safe Constructor Pattern.</div>
+    <div>&#9989; Toàn bộ 73 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 11 :</div>
+    <p>Chúng ta đã biết cách tạo đối tượng và liên kết prototype bằng <code>new</code> và <code>Object.create()</code>. Trong ES6, JavaScript bổ sung cú pháp <code>class</code> và từ khóa <code>extends</code>, <code>super</code>.</p>
+    <p><em>"Cú pháp <strong>ES6 Class</strong> thực chất có tạo ra mô hình hướng đối tượng mới không, hay chỉ là 'đường mật cú pháp' (Syntactic Sugar) phủ lên Prototypal Inheritance ? <strong>Subclassing</strong> hoạt động thế nào dưới tầng Engine, và tại sao ta bắt buộc phải gọi <code>super()</code> trước khi truy cập <code>this</code> ?"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 11 · Prototypal Inheritance vs ES6 Classes, `super` &amp; Private Fields (`#field`)</div>
+    <p class="nd">So sánh Prototypal Inheritance cổ điển vs ES6 Classes, cơ chế khởi tạo 2 pha của Subclass và bản chất Private Fields trên V8.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0009-prototype-chain.html">&#8592; Bài 09</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để xem 6 bài test của Bài 10 và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

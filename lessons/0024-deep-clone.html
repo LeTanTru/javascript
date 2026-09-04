@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 24 · Live-coding: Tự viết deepClone vs structuredClone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 06 · Bài 24 (Functional Programming &amp; Utility Polyfills)</span>
+  <h1>Bài 24 · Live-coding: Tự viết <code>deepClone</code> vs <code>structuredClone</code></h1>
+  <p class="subtitle">Thử thách Live-coding kinh điển đánh giá tư duy cấu trúc dữ liệu và xử lý đệ quy: Khắc phục triệt để bẫy JSON.parse(JSON.stringify), giải quyết tham chiếu vòng (Circular References) bằng WeakMap và so sánh với API gốc structuredClone.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Hiểu rõ nhược điểm của các phương pháp clone thông thường, tự tay viết hàm deepClone hỗ trợ Date, RegExp, Map, Set, Symbol, Circular references và nắm vững giới hạn của structuredClone.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 23 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 23</div>
+    <p>Ở Bài 23, bạn đã điều tiết dòng thời gian với Debounce và Throttle. Khi xử lý dữ liệu phức tạp trong Redux, Vuex hoặc State Management, một yêu cầu bất biến là <strong>Immutability (Bất biến)</strong>. Để chỉnh sửa dữ liệu lồng nhau nhiều cấp mà không mutate state cũ, ta cần đến <strong>Deep Clone</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1: TẠI SAO CẦN DEEP CLONE -->
+  <h2>1. Các phương pháp Clone và Cạm bẫy của JSON.stringify</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Phương pháp</th><th>Độ sâu</th><th>Hạn chế / Bẫy chết người</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Spread <code>{...obj}</code> / <code>Object.assign</code></td>
+        <td>Shallow (1 cấp)</td>
+        <td>Các object con bên trong vẫn giữ nguyên địa chỉ tham chiếu vùng nhớ cũ.</td>
+      </tr>
+      <tr>
+        <td><code>JSON.parse(JSON.stringify(obj))</code></td>
+        <td>Deep</td>
+        <td>
+          &#10060; Mất <code>undefined</code>, <code>Symbol</code>, <code>Function</code>.<br>
+          &#10060; Biến <code>Date</code> thành string ISO, biến <code>RegExp</code>/<code>Map</code>/<code>Set</code> thành object rỗng <code>{}</code>.<br>
+          &#10060; <strong>Crash ngay lập tức</strong> nếu có Circular Reference (TypeError: Converting circular structure to JSON).
+        </td>
+      </tr>
+      <tr>
+        <td><code>structuredClone(obj)</code> (HTML5 Standard)</td>
+        <td>Deep</td>
+        <td>
+          &#9989; Tích hợp sẵn trong Browser &amp; Node.js 17+, hỗ trợ Circular Ref, Date, Map, Set.<br>
+          &#10060; <strong>Ném lỗi DataCloneError</strong> nếu object chứa Function, Symbol, hoặc DOM Node.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Custom <code>deepClone</code> (Polyfill)</strong></td>
+        <td>Deep</td>
+        <td>Kiểm soát 100% logic, tùy biến xử lý Function, Symbol và giữ nguyên prototype chain.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2: THAM CHIẾU VÒNG & WEAKMAP -->
+  <h2>2. Giải quyết Tham chiếu vòng (Circular References) bằng WeakMap</h2>
+  <p>Giả sử bạn có object <code>parent.child = child; child.parent = parent;</code>. Nếu đệ quy thông thường, hàm sẽ gọi đệ quy vô tận và ném lỗi <code>RangeError: Maximum call stack size exceeded</code>.</p>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Tại sao dùng WeakMap thay vì Map ?</div>
+    <p><code>WeakMap</code> chỉ giữ tham chiếu yếu (weak reference) đến các object khóa. Khi quá trình clone kết thúc, bảng tra cứu này sẽ được Garbage Collector tự động dọn dẹp khỏi bộ nhớ, tránh memory leak khi clone các cây dữ liệu khổng lồ.</p>
+  </div>
+
+  <!-- PHẦN 3: LIVE-CODING DEEP CLONE -->
+  <h2>3. Live-coding: Cài đặt <code>deepClone()</code> chuẩn Senior</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Custom deepClone polyfill</span>
+    <pre><code><span class="kw">function</span> <span class="fn">deepClone</span>(value, hash = <span class="kw">new</span> <span class="fn">WeakMap</span>()) {
+  <span class="cmt">// 1. Primitives, Function hoặc null -> trả về trực tiếp</span>
+  <span class="kw">if</span> (value === <span class="kw">null</span> || <span class="kw">typeof</span> value !== <span class="str">'object'</span>) {
+    <span class="kw">return</span> value;
+  }
+
+  <span class="cmt">// 2. Xử lý Date & RegExp</span>
+  <span class="kw">if</span> (value <span class="kw">instanceof</span> Date) <span class="kw">return new</span> <span class="fn">Date</span>(value.<span class="fn">getTime</span>());
+  <span class="kw">if</span> (value <span class="kw">instanceof</span> RegExp) <span class="kw">return new</span> <span class="fn">RegExp</span>(value.source, value.flags);
+
+  <span class="cmt">// 3. Xử lý Circular References (Tham chiếu vòng)</span>
+  <span class="kw">if</span> (hash.<span class="fn">has</span>(value)) {
+    <span class="kw">return</span> hash.<span class="fn">get</span>(value);
+  }
+
+  <span class="cmt">// 4. Xử lý Map</span>
+  <span class="kw">if</span> (value <span class="kw">instanceof</span> Map) {
+    <span class="kw">const</span> clonedMap = <span class="kw">new</span> <span class="fn">Map</span>();
+    hash.<span class="fn">set</span>(value, clonedMap);
+    value.<span class="fn">forEach</span>((v, k) => {
+      clonedMap.<span class="fn">set</span>(<span class="fn">deepClone</span>(k, hash), <span class="fn">deepClone</span>(v, hash));
+    });
+    <span class="kw">return</span> clonedMap;
+  }
+
+  <span class="cmt">// 5. Xử lý Set</span>
+  <span class="kw">if</span> (value <span class="kw">instanceof</span> Set) {
+    <span class="kw">const</span> clonedSet = <span class="kw">new</span> <span class="fn">Set</span>();
+    hash.<span class="fn">set</span>(value, clonedSet);
+    value.<span class="fn">forEach</span>((v) => {
+      clonedSet.<span class="fn">add</span>(<span class="fn">deepClone</span>(v, hash));
+    });
+    <span class="kw">return</span> clonedSet;
+  }
+
+  <span class="cmt">// 6. Khởi tạo mảng hoặc object giữ nguyên Prototype Chain</span>
+  <span class="kw">const</span> isArray = Array.<span class="fn">isArray</span>(value);
+  <span class="kw">const</span> result = isArray ? [] : Object.<span class="fn">create</span>(Object.<span class="fn">getPrototypeOf</span>(value));
+  hash.<span class="fn">set</span>(value, result);
+
+  <span class="cmt">// 7. Duyệt toàn bộ keys (kể cả Symbol) bằng Reflect.ownKeys</span>
+  <span class="kw">const</span> keys = Reflect.<span class="fn">ownKeys</span>(value);
+  <span class="kw">for</span> (<span class="kw">const</span> key <span class="kw">of</span> keys) {
+    <span class="kw">const</span> descriptor = Object.<span class="fn">getOwnPropertyDescriptor</span>(value, key);
+    <span class="kw">if</span> (descriptor && descriptor.enumerable) {
+      result[key] = <span class="fn">deepClone</span>(value[key], hash);
+    }
+  }
+
+  <span class="kw">return</span> result;
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Lệnh <code>JSON.parse(JSON.stringify({ a: undefined, b: () => {}, c: new Date(), d: /abc/g }))</code> sẽ cho ra kết quả gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! JSON không hỗ trợ kiểu function hay undefined, chúng sẽ bị loại bỏ hoàn toàn.">A. Giữ nguyên đầy đủ tất cả các trường</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! undefined và function bị xóa hoàn toàn khỏi object, Date bị chuyển thành string dạng ISO, và RegExp bị biến thành object rỗng {}.">B. { c: "2026-...", d: {} } (a và b bị xóa hoàn toàn, Date thành string, RegExp thành {})</button>
+    <button class="opt" data-correct="false" data-explain="Sai! JSON.stringify không ném lỗi trừ khi gặp circular reference hoặc BigInt.">C. Ném lỗi TypeError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Khi nào hàm <code>structuredClone()</code> có sẵn của trình duyệt sẽ ném lỗi <code>DataCloneError</code> ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! structuredClone xử lý tham chiếu vòng và Map/Set cực kỳ hoàn hảo.">A. Khi object có chứa Circular References hoặc Map/Set</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Thuật toán Structured Clone Algorithm không hỗ trợ serialize Function, DOM Node hoặc Symbol, và sẽ lập tức throw DOMException DataCloneError.">B. Khi object có chứa Function (methods), DOM Nodes, hoặc Symbol</button>
+    <button class="opt" data-correct="false" data-explain="Sai! structuredClone hỗ trợ Date và ArrayBuffer rất tốt.">C. Khi object chứa Date hoặc TypedArray</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 5: CHECKLIST -->
+  <h2>5. Checklist tự kiểm chứng — Bài 24</h2>
+  <div class="checklist">
+    <div>&#9989; Liệt kê vanh vách 3 điểm yếu chí mạng của <code>JSON.parse(JSON.stringify())</code>.</div>
+    <div>&#9989; Tự tay code hàm <code>deepClone</code> dùng <code>WeakMap</code> để xử lý Circular References.</div>
+    <div>&#9989; Sao chép hoàn hảo các kiểu dữ liệu đặc thù: <code>Date</code>, <code>RegExp</code>, <code>Map</code>, <code>Set</code>.</div>
+    <div>&#9989; Dùng <code>Reflect.ownKeys</code> để không bỏ sót các thuộc tính khóa là <code>Symbol</code>.</div>
+    <div>&#9989; Toàn bộ 25 test suites (157/157 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo trong Module 06</div>
+    <div class="nt">Bài 25 · Live-coding: Cài đặt <code>EventEmitter</code> (Pub/Sub pattern) &amp; <code>pipe</code>/<code>compose</code></div>
+    <p class="nd">Kiến trúc hướng sự kiện (Event-Driven Architecture) và xây dựng pipeline xử lý dữ liệu từ trái sang phải / từ phải sang trái chuẩn Functional Programming.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0023-debounce-throttle.html">&#8592; Bài 23</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0025-event-emitter-compose.html">Bài 25 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test deepClone và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

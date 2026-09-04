@@ -88,5 +88,18 @@ _Avoid_: Deep equality, reference equality
 Chuẩn quốc tế định nghĩa cách biểu diễn và tính toán số thực dấu phẩy động trong máy tính (JavaScript dùng double-precision 64-bit). Quy định: mọi phép so sánh liên quan đến NaN đều trả về false; tồn tại hai zero phân biệt (+0 và −0).
 _Avoid_: Floating point standard, IEEE standard
 
+**Realm**:
+Môi trường thực thi độc lập hoàn chỉnh trong JavaScript runtime, bao gồm một Global Object riêng biệt, Global Scope riêng, và một tập hợp các built-in constructors (Object, Array, Function...) riêng trên Memory Heap. Được tạo ra bởi mỗi window, tab, iframe hoặc worker.
+_Avoid_: Sandbox, isolate scope, window context
 
+**OrdinaryHasInstance (instanceof)**:
+Thuật toán trừu tượng ECMA-262 §7.3.22 triển khai toán tử `instanceof`: kiểm tra xem `Constructor.prototype` có nằm trong chuỗi Prototype Chain (`[[Prototype]]`) của đối tượng hay không. Thất bại khi kiểm tra đối tượng sinh ra từ Realm khác (cross-realm) hoặc primitive literals.
+_Avoid_: Type checker, class instance check
 
+**Object.prototype.toString**:
+Phương thức trích xuất nhãn định danh kiểu dữ liệu chuẩn (`[object Tag]`) thông qua internal slot `[[Class]]` hoặc `Symbol.toStringTag`. Là tiêu chuẩn vàng để kiểm tra kiểu dữ liệu trong JavaScript vì hoạt động chính xác xuyên suốt mọi Realm.
+_Avoid_: Object serializer, type stringifier
+
+**Symbol.toStringTag**:
+Well-known Symbol trong ECMAScript cho phép tùy biến chuỗi mô tả nhãn kiểu dữ liệu trả về khi gọi `Object.prototype.toString(O)`.
+_Avoid_: Custom tag, class tag

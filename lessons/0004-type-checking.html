@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 04 · typeof, instanceof &amp; Kiểm tra kiểu đáng tin cậy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 01 · Bài 04</span>
+  <h1>Bài 04 · <code>typeof</code>, <code>instanceof</code> &amp; Kiểm tra kiểu đáng tin cậy</h1>
+  <p class="subtitle">Giải mã lỗi thiết kế C-level năm 1995, bản chất Prototype Chain lookup, sự sụp đổ của <code>instanceof</code> qua ranh giới Realm (iframe), và tiêu chuẩn vàng <code>Object.prototype.toString</code>.</p>
+  <p class="meta-line">&#9203; ~15 phút &middot; &#127919; Mục tiêu: Hiểu rõ cơ chế xác định kiểu của JavaScript Engine, phân tích vì sao <code>instanceof</code> thất bại cross-realm, và tự xây dựng hàm kiểm tra kiểu chuẩn Production.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 03 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 03</div>
+    <p>Ở bài trước, chúng ta đã hiểu sâu về các phép so sánh <code>===</code>, <code>==</code> và <code>Object.is()</code>. Tuy nhiên, trước khi so sánh hoặc xử lý dữ liệu, bước đầu tiên trong mọi hệ thống production là <strong>kiểm tra kiểu dữ liệu (Type Checking)</strong>. Nếu dùng sai công cụ để kiểm tra kiểu, toàn bộ logic phòng thủ phía sau sẽ sụp đổ.</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. Toán tử <code>typeof</code> &amp; Lỗi thiết kế máy ảo C năm 1995</h2>
+  <p>Toán tử <code>typeof</code> là cách nhanh nhất để kiểm tra các kiểu dữ liệu nguyên bản (Primitive types). Theo chuẩn ECMAScript, <code>typeof</code> chỉ trả về chính xác 1 trong <strong>8 chuỗi ký tự cố định</strong> sau đây :</p>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Biểu thức</th>
+        <th>Kết quả <code>typeof</code></th>
+        <th>Phân loại</th>
+        <th>Ghi chú tầng sâu</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>typeof undefined</code></td>
+        <td><code>"undefined"</code></td>
+        <td>Primitive</td>
+        <td>Bao gồm cả biến chưa từng được khai báo (undeclared).</td>
+      </tr>
+      <tr>
+        <td><code>typeof true / false</code></td>
+        <td><code>"boolean"</code></td>
+        <td>Primitive</td>
+        <td>Boolean nguyên bản.</td>
+      </tr>
+      <tr>
+        <td><code>typeof 42 / NaN / Infinity</code></td>
+        <td><code>"number"</code></td>
+        <td>Primitive</td>
+        <td>Kể cả số vô tỉ hoặc <code>NaN</code> (Not a Number).</td>
+      </tr>
+      <tr>
+        <td><code>typeof 42n</code></td>
+        <td><code>"bigint"</code></td>
+        <td>Primitive</td>
+        <td>Số nguyên vô hạn chữ số (ES2020).</td>
+      </tr>
+      <tr>
+        <td><code>typeof "Antigravity"</code></td>
+        <td><code>"string"</code></td>
+        <td>Primitive</td>
+        <td>Chuỗi ký tự bất biến (Immutable).</td>
+      </tr>
+      <tr>
+        <td><code>typeof Symbol("id")</code></td>
+        <td><code>"symbol"</code></td>
+        <td>Primitive</td>
+        <td>Định danh độc nhất (ES6).</td>
+      </tr>
+      <tr>
+        <td><code>typeof function(){}</code></td>
+        <td><code>"function"</code></td>
+        <td>Object đặc biệt</td>
+        <td>Là Object nhưng có internal method <code>[[Call]]</code>.</td>
+      </tr>
+      <tr>
+        <td><code>typeof {} / [] / /abc/ / new Date()</code></td>
+        <td><code>"object"</code></td>
+        <td>Reference</td>
+        <td>Mọi object, mảng, regex, collection.</td>
+      </tr>
+      <tr>
+        <td><code>typeof null</code></td>
+        <td><strong><code>"object"</code></strong></td>
+        <td>Primitive</td>
+        <td><strong>Bẫy lịch sử nghiêm trọng nhất JS !</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout danger">
+    <div class="ct">&#9888; Tại sao typeof null === "object" ? Bản chất kiến trúc C năm 1995</div>
+    <p>Trong phiên bản đầu tiên của JavaScript (Brendan Eich viết trong 10 ngày năm 1995), các giá trị được biểu diễn dưới tầng C bằng một từ máy 32-bit gồm 2 phần : <strong>Type Tag (1-3 bits đầu)</strong> và <strong>Payload (con trỏ bộ nhớ hoặc giá trị)</strong> :</p>
+    <ul>
+      <li><code>000</code> : Đối tượng (Object) &mdash; payload là địa chỉ bộ nhớ trỏ sang Heap.</li>
+      <li><code>1</code> : Số nguyên (Integer 31-bit).</li>
+      <li><code>010</code> : Số thực dấu phẩy động (Double).</li>
+      <li><code>100</code> : Chuỗi ký tự (String).</li>
+      <li><code>110</code> : Boolean.</li>
+    </ul>
+    <p>Giá trị <code>null</code> được định nghĩa là <strong>con trỏ rỗng (NULL Pointer, giá trị địa chỉ <code>0x00</code>)</strong>. Khi máy ảo đọc các bit định danh (tag bits), nó thấy toàn số <code>0</code> &#8594; trùng khớp hoàn toàn với Type Tag <code>000</code> của Object ! Do đó, hàm trả về chuỗi <code>"object"</code>.</p>
+  </div>
+
+  <div class="callout why">
+    <div class="ct">&#128161; Tại sao hội đồng TC39 không sửa lỗi này ?</div>
+    <p>Vào năm 2008 (thời điểm chuẩn bị ECMAScript 4 / 5), đã có đề xuất sửa <code>typeof null</code> thành <code>"null"</code>. Tuy nhiên, khi thử nghiệm trên các trình duyệt thực tế, hàng loạt website trên toàn thế giới bị sập. Rất nhiều thư viện và mã nguồn legacy sử dụng đoạn kiểm tra :</p>
+    <div class="code-block">
+      <span class="code-label">JavaScript Legacy Check</span>
+      <pre><code><span class="kw">if</span> (<span class="kw">typeof</span> val === <span class="str">"object"</span> &amp;&amp; val !== <span class="kw">null</span>) { ... }</code></pre>
+    </div>
+    <p>Nếu đổi kết quả <code>typeof null</code> sang <code>"null"</code>, nguyên tắc <em>"Don't break the Web" (Bảo đảm tính tương thích ngược)</em> sẽ bị vi phạm. Do đó, TC39 quyết định giữ vĩnh viễn hành vi này như một đặc tả chính thức của ngôn ngữ.</p>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Toán tử <code>instanceof</code> &amp; Giải phẫu Prototype Chain</h2>
+  <p>Để kiểm tra kiểu của các Reference Type (Mảng, Date, Error, hoặc Class tùy biến), lập trình viên thường dùng toán tử <code>instanceof</code>. Nhưng bản chất bên dưới của <code>instanceof</code> là gì ?</p>
+
+  <div class="code-block">
+    <span class="code-label">Thuật toán OrdinaryHasInstance (Tương đương)</span>
+    <pre><code><span class="cmt">// Biểu thức: obj instanceof Constructor</span>
+<span class="kw">function</span> <span class="fn">myInstanceOf</span>(obj, Constructor) {
+  <span class="cmt">// 1. Primitives luôn luôn trả về false</span>
+  <span class="kw">if</span> (obj === <span class="kw">null</span> || (<span class="kw">typeof</span> obj !== <span class="str">"object"</span> &amp;&amp; <span class="kw">typeof</span> obj !== <span class="str">"function"</span>)) {
+    <span class="kw">return</span> <span class="kw">false</span>;
+  }
+
+  <span class="cmt">// 2. Lấy prototype của Constructor</span>
+  <span class="kw">const</span> targetPrototype = Constructor.<span class="fn">prototype</span>;
+  <span class="kw">let</span> proto = Object.<span class="fn">getPrototypeOf</span>(obj);
+
+  <span class="cmt">// 3. Duyệt ngược chuỗi Prototype Chain đến khi gặp null</span>
+  <span class="kw">while</span> (proto !== <span class="kw">null</span>) {
+    <span class="kw">if</span> (proto === targetPrototype) {
+      <span class="kw">return</span> <span class="kw">true</span>; <span class="cmt">// Tìm thấy khớp địa chỉ tham chiếu!</span>
+    }
+    proto = Object.<span class="fn">getPrototypeOf</span>(proto);
+  }
+
+  <span class="kw">return</span> <span class="kw">false</span>;
+}</code></pre>
+  </div>
+
+  <div class="callout warn">
+    <div class="ct">&#9888; Hai điểm mù nguy hiểm của instanceof</div>
+    <ol>
+      <li><strong>Không nhận diện được Primitive Literals :</strong>
+        <br><code>"Antigravity" instanceof String === false</code> (vì chuỗi nguyên bản không có prototype chain trỏ tới <code>String.prototype</code> trừ khi được bọc bằng <code>new String("Antigravity")</code>).
+      </li>
+      <li><strong>Có thể bị giả mạo / thay đổi runtime :</strong>
+        <br>Prototype chain có thể bị can thiệp bằng <code>Object.setPrototypeOf()</code> hoặc qua cơ chế ES6 <code>[Symbol.hasInstance]</code>.
+      </li>
+    </ol>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Cạm bẫy Cross-Realm (Iframe / Web Worker) &amp; Sự ra đời của <code>Array.isArray()</code></h2>
+  <p>Đây là câu hỏi phân loại ứng viên Senior kinh điển nhất khi phỏng vấn về JavaScript Core :</p>
+  
+  <div class="callout danger">
+    <div class="ct">&#9762; Hiện tượng: Tại sao arr instanceof Array trả về false ?</div>
+    <p>Một <strong>Realm</strong> trong JavaScript bao gồm một môi trường thực thi hoàn chỉnh : Global Object riêng (<code>window</code> trong tab chính, <code>iframeWindow</code> trong thẻ iframe), Global Scope riêng, và <strong>tập hợp các built-in constructors riêng biệt</strong> nằm ở các địa chỉ ô nhớ hoàn toàn khác nhau trong Memory Heap !</p>
+  </div>
+
+  <div class="code-block">
+    <span class="code-label">Kịch bản Cross-Realm kinh điển (Iframe / Micro-frontend)</span>
+    <pre><code><span class="cmt">// Trong cửa sổ trình duyệt chính (Main Realm)</span>
+<span class="kw">const</span> iframe = document.<span class="fn">createElement</span>(<span class="str">'iframe'</span>);
+document.body.<span class="fn">appendChild</span>(iframe);
+
+<span class="cmt">// Mảng được tạo ra từ Realm của iframe</span>
+<span class="kw">const</span> subArray = iframe.contentWindow.Array(1, 2, 3);
+
+<span class="cmt">// So sánh Prototype Chain giữa 2 Realms:</span>
+subArray <span class="kw">instanceof</span> Array; <span class="cmt">// &#8594; FALSE ! Tại sao ?</span>
+
+<span class="cmt">// Giải thích:</span>
+<span class="cmt">// subArray.__proto__ === iframe.contentWindow.Array.prototype</span>
+<span class="cmt">// Nhưng window.Array.prototype lại nằm ở một địa chỉ ô nhớ hoàn toàn khác!</span>
+<span class="cmt">// iframe.contentWindow.Array.prototype !== window.Array.prototype</span>
+
+<span class="cmt">// CỨU TINH: Array.isArray() hoạt động xuyên Realm!</span>
+Array.<span class="fn">isArray</span>(subArray); <span class="cmt">// &#8594; TRUE (Chuẩn xác 100%)</span></code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#9989; Tại sao Array.isArray() giải quyết được ?</div>
+    <p>Theo chuẩn ECMA-262, <code>Array.isArray(arg)</code> không hề duyệt chuỗi Prototype Chain. Nó kiểm tra trực tiếp <strong>Internal Slot <code>[[Class]]</code></strong> (hoặc internal tag định danh mảng của V8 Engine). Bất kể mảng đó được sinh ra từ Realm nào, tab nào, hay iframe nào, internal slot của nó luôn được cộp dấu nhận diện mảng.</p>
+  </div>
+
+  <!-- PHẦN 4 -->
+  <h2>4. "Tiêu chuẩn vàng": <code>Object.prototype.toString.call()</code></h2>
+  <p>Nếu <code>typeof</code> bị lỗi với <code>null</code> và không phân biệt được các loại object, còn <code>instanceof</code> bị đứt gãy qua Cross-Realm, thì đâu là giải pháp tối thượng để định danh kiểu dữ liệu trong JavaScript ?</p>
+  <p>Đó chính là <strong><code>Object.prototype.toString.call(value)</code></strong>.</p>
+
+  <div class="code-block">
+    <span class="code-label">Sức mạnh của Object.prototype.toString.call</span>
+    <pre><code><span class="kw">const</span> toTag = (val) => Object.prototype.<span class="fn">toString</span>.<span class="fn">call</span>(val);
+
+toTag(<span class="kw">null</span>);        <span class="cmt">// &#8594; "[object Null]"        (Chính xác!)</span>
+toTag(<span class="kw">undefined</span>);   <span class="cmt">// &#8594; "[object Undefined]"   (Chính xác!)</span>
+toTag([1, 2, 3]);   <span class="cmt">// &#8594; "[object Array]"       (Hoạt động cross-realm)</span>
+toTag(/abc/);       <span class="cmt">// &#8594; "[object RegExp]"</span>
+toTag(<span class="kw">new</span> Date());   <span class="cmt">// &#8594; "[object Date]"</span>
+toTag(<span class="kw">new</span> Map());    <span class="cmt">// &#8594; "[object Map]"</span>
+toTag(<span class="kw">new</span> Set());    <span class="cmt">// &#8594; "[object Set]"</span>
+toTag(<span class="kw">async</span> () => {}); <span class="cmt">// &#8594; "[object AsyncFunction]"</span></code></pre>
+  </div>
+
+  <div class="callout why">
+    <div class="ct">&#9881; Cơ chế tầng sâu (ECMA-262 Specification)</div>
+    <p>Khi gọi <code>Object.prototype.toString.call(O)</code>, thuật toán thực hiện :</p>
+    <ol>
+      <li>Nếu <code>O</code> là <code>undefined</code> &#8594; trả về <code>"[object Undefined]"</code>.</li>
+      <li>Nếu <code>O</code> là <code>null</code> &#8594; trả về <code>"[object Null]"</code>.</li>
+      <li>Chuyển <code>O</code> thành Object thông qua <code>ToObject(O)</code>.</li>
+      <li>Kiểm tra thuộc tính đặc biệt <strong><code>Symbol.toStringTag</code></strong> trên đối tượng. Nếu có giá trị chuỗi, dùng chuỗi đó làm Tag.</li>
+      <li>Nếu không có, ánh xạ theo bảng internal slots chuẩn (Arguments, Array, Function, Error, Date, RegExp...).</li>
+      <li>Trả về định dạng <code>"[object " + tag + "]"</code>.</li>
+    </ol>
+  </div>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Xây dựng hàm kiểm tra kiểu chuẩn Production &amp; Decision Tree</h2>
+  <p>Dựa trên toàn bộ bản chất ở trên, đây là hàm tiện ích chuẩn senior giúp bạn phân loại chính xác 100% mọi giá trị trong JavaScript :</p>
+
+  <div class="code-block">
+    <span class="code-label">practice/type-checking.test.js &mdash; toExactType</span>
+    <pre><code><span class="cmt">/**
+ * Trích xuất kiểu dữ liệu nguyên bản và đối tượng chuẩn xác 100%
+ * @param {*} value - Giá trị cần kiểm tra
+ * @returns {string} - Tên kiểu viết thường: 'null', 'undefined', 'array', 'object', v.v.
+ */</span>
+<span class="kw">function</span> <span class="fn">toExactType</span>(value) {
+  <span class="cmt">// 1. Xử lý trường hợp null và undefined nhanh gọn</span>
+  <span class="kw">if</span> (value === <span class="kw">null</span>) <span class="kw">return</span> <span class="str">'null'</span>;
+  <span class="kw">if</span> (value === <span class="kw">undefined</span>) <span class="kw">return</span> <span class="str">'undefined'</span>;
+
+  <span class="cmt">// 2. Dùng Object.prototype.toString và cắt chuỗi '[object Tag]'</span>
+  <span class="kw">return</span> Object.prototype.<span class="fn">toString</span>.<span class="fn">call</span>(value).<span class="fn">slice</span>(8, -1).<span class="fn">toLowerCase</span>();
+}</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#128065; Cây quyết định khi kiểm tra kiểu (Type Checking Decision Tree)</div>
+    <ul>
+      <li><strong>Cần kiểm tra Primitive thông thường (number, string, boolean, symbol, bigint, undefined) ?</strong> &#8594; Dùng <code>typeof</code> (hiệu năng cao nhất, thực thi trực tiếp tại CPU/Register).</li>
+      <li><strong>Cần kiểm tra null ?</strong> &#8594; Dùng phép so sánh nghiêm ngặt <code>val === null</code>.</li>
+      <li><strong>Cần kiểm tra Mảng ?</strong> &#8594; Luôn luôn dùng <code>Array.isArray(val)</code> (bất bại trước cross-realm).</li>
+      <li><strong>Cần kiểm tra một Class Instance cụ thể trong cùng ứng dụng ?</strong> &#8594; Dùng <code>instanceof</code>.</li>
+      <li><strong>Cần phân biệt Plain Object <code>{}</code>, RegExp, Date, Map, Set, hoặc Deep Clone / Serializer ?</strong> &#8594; Bắt buộc dùng <code>Object.prototype.toString.call(val)</code>.</li>
+    </ul>
+  </div>
+
+  <!-- GÓC PHỎNG VẤN SENIOR -->
+  <h2>6. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Câu hỏi 1: Tại sao typeof null === 'object' và tại sao lỗi này không bao giờ được sửa ?</div>
+    <p><strong>Cách trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Đây là lỗi thiết kế cấu trúc dữ liệu từ năm 1995 của Brendan Eich. Trong máy ảo JS đầu tiên, giá trị biến được biểu diễn bằng 32-bit gồm Type Tag và Payload. Type Tag <code>000</code> biểu thị Object, trong khi <code>null</code> là con trỏ rỗng có địa chỉ <code>0x00</code> nên máy ảo nhận nhầm tag là Object. Lỗi này không bao giờ được sửa vì nguyên tắc <strong>Don't Break the Web</strong>: hàng triệu website và thư viện sản xuất từ 1995 đến nay đã viết logic phòng thủ dựa trên hành vi này; nếu TC39 sửa đổi sẽ gây vỡ ứng dụng diện rộng."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Câu hỏi 2: Khi nào toán tử instanceof thất bại hoặc cho kết quả không chính xác ?</div>
+    <p><strong>Cách trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"<code>instanceof</code> thất bại trong 3 trường hợp chính :</em></p>
+    <ol>
+      <li><em><strong>Môi trường Cross-Realm (Iframe, Micro-frontends, Web Workers) :</strong> Mỗi Realm có một Global Object và bộ Constructors riêng trong bộ nhớ. Mảng tạo từ iframe có prototype trỏ tới <code>iframe.contentWindow.Array.prototype</code>, không cùng tham chiếu với <code>window.Array.prototype</code>, khiến <code>arr instanceof Array</code> trả về <code>false</code>.</em></li>
+      <li><em><strong>Primitive Literals :</strong> <code>'str' instanceof String</code> là <code>false</code> vì primitives không có prototype chain trực tiếp.</em></li>
+      <li><em><strong>Prototype Mutation :</strong> Khi dùng <code>Object.setPrototypeOf()</code> hoặc ghi đè <code>Symbol.hasInstance</code>, logic của <code>instanceof</code> có thể bị đánh lừa."</em></li>
+    </ol>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Câu hỏi 3: Làm thế nào để viết hàm isPlainObject(val) chuẩn xác như trong Redux hoặc Lodash ?</div>
+    <p><strong>Cách trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Một Plain Object là đối tượng được tạo bởi <code>{}</code>, <code>new Object()</code>, hoặc <code>Object.create(null)</code>. Kiểm tra bằng <code>typeof val === 'object'</code> là không đủ vì nó sẽ nhận nhầm cả Array, Date, Regex và null. Ta cần kết hợp 2 điều kiện :</em></p>
+    <div class="code-block">
+      <span class="code-label">isPlainObject Implementation</span>
+      <pre><code><span class="kw">function</span> <span class="fn">isPlainObject</span>(val) {
+  <span class="kw">if</span> (Object.prototype.<span class="fn">toString</span>.<span class="fn">call</span>(val) !== <span class="str">'[object Object]'</span>) <span class="kw">return</span> <span class="kw">false</span>;
+  <span class="kw">const</span> proto = Object.<span class="fn">getPrototypeOf</span>(val);
+  <span class="cmt">// Hỗ trợ Object.create(null) hoặc prototype trỏ thẳng Object.prototype</span>
+  <span class="kw">return</span> proto === <span class="kw">null</span> || proto === Object.<span class="fn">prototype</span>;
+}</code></pre>
+    </div>
+  </div>
+
+  <!-- QUIZ CHECKPOINT -->
+  <h2>7. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Biểu thức nào sau đây trả về kết quả <code>false</code> ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Array.isArray() luôn luôn trả về true bất kể mảng được sinh ra từ Realm hay iframe nào.">A. <code>Array.isArray([])</code></button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Chuỗi nguyên bản (primitive string) không phải là instance của String Constructor trừ khi được khởi tạo bằng new String('hello').">B. <code>"hello" instanceof String</code></button>
+    <button class="opt" data-correct="false" data-explain="Sai! NaN có kiểu là 'number' theo chuẩn IEEE 754, nên typeof NaN === 'number' là true.">C. <code>typeof NaN === "number"</code></button>
+    <button class="opt" data-correct="false" data-explain="Sai! Function kế thừa từ Object.prototype nên fn instanceof Object luôn trả về true.">D. <code>(() =&gt; {}) instanceof Object</code></button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Tại sao nên dùng <code>Object.prototype.toString.call(val)</code> thay vì gọi trực tiếp <code>val.toString()</code> ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! val.toString() hoàn toàn hợp lệ nếu val là object thông thường.">A. Vì gọi trực tiếp sẽ gây lỗi cú pháp (SyntaxError).</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Các lớp như Array, Date, RegExp đều ghi đè (override) phương thức toString() riêng trên prototype của chúng. Gọi trực tiếp val.toString() sẽ ra chuỗi nội dung chứ không ra nhãn kiểu '[object Array]'. Hơn nữa nếu val là null/undefined thì gọi val.toString() sẽ quăng TypeError.">B. Vì các kiểu dữ liệu như Array, Date đã override toString() của riêng chúng, và nếu gọi trên null/undefined sẽ gây TypeError.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Object.prototype.toString.call(val) không làm thay đổi prototype chain.">C. Vì gọi trực tiếp sẽ làm thay đổi cấu trúc prototype chain của đối tượng.</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>8. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Đã hiểu rõ nguồn gốc lỗi kiến trúc máy ảo C 1995 khiến <code>typeof null === 'object'</code>.</div>
+    <div>&#9989; Phân biệt được thuật toán duyệt chuỗi của <code>instanceof</code> và lý do nó thất bại trước cross-realm iframe.</div>
+    <div>&#9989; Nắm chắc lý do <code>Array.isArray()</code> là lựa chọn duy nhất cho mảng.</div>
+    <div>&#9989; Hiểu rõ cơ chế của <code>Object.prototype.toString.call()</code> và cách cài đặt hàm <code>toExactType()</code>.</div>
+    <div>&#9989; Toàn bộ 37 tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 05 :</div>
+    <p>Chúng ta vừa nhắc đến <code>Symbol.hasInstance</code> và <code>Symbol.toStringTag</code> &mdash; những thuộc tính đặc biệt có khả năng thay đổi hành vi mặc định của toán tử <code>instanceof</code> và hàm <code>toString()</code>.</p>
+    <p><em>"Trong JavaScript hiện đại, <strong>Symbol</strong> thực sự là gì ? Tại sao Symbol lại giải quyết được vấn đề va chạm key trong object, và bộ 'Well-known Symbols' (như <code>Symbol.iterator</code>, <code>Symbol.toPrimitive</code>) trao quyền cho lập trình viên can thiệp sâu vào JavaScript engine như thế nào ?"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Tổng kết &amp; Ôn luyện</div>
+    <div class="nt">Cheat-Sheet &amp; Tổng hợp toàn bộ kiến thức Module 01</div>
+    <p class="nd">Bản đồ tư duy tóm lược cô đọng 4 trục kiến thức (Bộ nhớ, Ép kiểu, So sánh bằng, Kiểm tra kiểu), kèm bộ 4 câu hỏi Spaced-Recall Quiz và Top câu hỏi phỏng vấn Senior.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0003-equality.html">&#8592; Trước</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="../reference/01-types-memory-coercion.html">Tổng kết Module 01 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy chạy <code>npm test</code> trong thư mục <code>practice</code>, quan sát từng test case và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 01 · Kiểu dữ liệu, Memory Model &amp; Type Coercion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .cs-badge { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #232838; color: var(--text-dim); margin-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it, .quiz { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 01 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 01 : Kiểu dữ liệu, Memory Model &amp; Type Coercion</h1>
+  <p class="subtitle">Bản đồ tư duy tóm lược cô đọng toàn bộ kiến thức nền tảng từ Bài 00 đến Bài 04 &mdash; Dành riêng cho ôn luyện tốc độ cao và phỏng vấn Senior Frontend.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Nắm trọn 4 trục cốt lõi của JavaScript Engine (Bộ nhớ, Ép kiểu, So sánh bằng, Định danh kiểu), phản xạ trọn vẹn mọi câu hỏi trick phỏng vấn.</p>
+
+  <!-- PHẦN 1: BẢN ĐỒ BỘ NHỚ -->
+  <h2>1. Trục 1: Mô hình bộ nhớ &amp; Quản lý kiểu (Bài 01)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Kiểu dữ liệu</th>
+        <th>Vùng nhớ lưu trữ</th>
+        <th>Cơ chế truyền tham số</th>
+        <th>Đặc tính bất biến</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>7 Primitives:</strong> String, Number, Boolean, Null, Undefined, Symbol, BigInt</td>
+        <td><strong>Call Stack</strong> (Nằm trực tiếp trong Execution Context)</td>
+        <td><strong>Pass-by-value</strong> (Sao chép giá trị nguyên bản sang ngăn nhớ mới)</td>
+        <td><strong>Immutable</strong> (Bất biến, không thể thay đổi nội tại giá trị)</td>
+      </tr>
+      <tr>
+        <td><strong>Reference Types:</strong> Object, Array, Function, Date, RegExp, Map, Set</td>
+        <td><strong>Memory Heap</strong> (Call Stack chỉ lưu con trỏ tham chiếu 32/64-bit)</td>
+        <td><strong>Pass-by-sharing</strong> (Sao chép bản sao con trỏ tham chiếu đến cùng ô nhớ Heap)</td>
+        <td><strong>Mutable</strong> (Đột biến thuộc tính bên trong đối tượng)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout why">
+    <div class="ct">&#128161; Cơ chế Autoboxing &amp; Escape Analysis</div>
+    <p>Khi gọi method trên Primitive (ví dụ <code>"hello".toUpperCase()</code>), V8 Engine tạm thời bọc nó trong Wrapper Object (<code>new String()</code>) trên Heap. Nhờ kỹ thuật <strong>Escape Analysis</strong>, V8 phát hiện đối tượng không rò rỉ ra ngoài và tối ưu hóa loại bỏ việc cấp phát Heap, tránh hoàn toàn chi phí hiệu năng và rò rỉ bộ nhớ.</p>
+  </div>
+
+  <!-- PHẦN 2: THUẬT TOÁN ÉP KIỂU -->
+  <h2>2. Trục 2: Thuật toán Type Coercion (Bài 02)</h2>
+  <p>Toàn bộ cơ chế ép kiểu trong JavaScript đều tuân theo 3 thuật toán trừu tượng trong đặc tả ECMA-262 :</p>
+  
+  <div class="cs-grid">
+    <div class="cs-card">
+      <span class="cs-badge">ECMA-262 §7.1.1</span>
+      <h3>ToPrimitive(input, preferredType)</h3>
+      <p>Biến đổi Object thành Primitive theo thứ tự ưu tiên :</p>
+      <ol>
+        <li>Gọi <code>[Symbol.toPrimitive](hint)</code> nếu có.</li>
+        <li>Nếu hint là <code>"string"</code>: gọi <code>toString()</code> trước, nếu không ra primitive thì gọi <code>valueOf()</code>.</li>
+        <li>Nếu hint là <code>"number"</code> / default: gọi <code>valueOf()</code> trước, sau đó mới gọi <code>toString()</code>.</li>
+      </ol>
+    </div>
+
+    <div class="cs-card">
+      <span class="cs-badge">ECMA-262 §7.1.3 &amp; §7.1.17</span>
+      <h3>ToNumber &amp; ToString</h3>
+      <ul>
+        <li><code>ToNumber(null) &rarr; 0</code></li>
+        <li><code>ToNumber(undefined) &rarr; NaN</code></li>
+        <li><code>ToNumber("") &rarr; 0</code></li>
+        <li><code>ToNumber("123") &rarr; 123</code> | <code>ToNumber("12a") &rarr; NaN</code></li>
+        <li><code>ToString([]) &rarr; ""</code> | <code>ToString([1,2]) &rarr; "1,2"</code></li>
+        <li><code>ToString({}) &rarr; "[object Object]"</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- PHẦN 3: MA TRẬN SO SÁNH BẰNG -->
+  <h2>3. Trục 3: Ma trận so sánh bằng (Bài 03)</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Biểu thức</th>
+        <th><code>==</code> (IsLooselyEqual)</th>
+        <th><code>===</code> (IsStrictlyEqual)</th>
+        <th><code>Object.is()</code> (SameValue)</th>
+        <th>Giải thích bản chất</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>NaN vs NaN</code></td>
+        <td><code>false</code></td>
+        <td><code>false</code></td>
+        <td><strong style="color:var(--green)"><code>true</code></strong></td>
+        <td>IEEE 754: NaN không bằng chính nó. <code>Object.is</code> phân biệt chính xác.</td>
+      </tr>
+      <tr>
+        <td><code>+0 vs -0</code></td>
+        <td><code>true</code></td>
+        <td><code>true</code></td>
+        <td><strong style="color:var(--red)"><code>false</code></strong></td>
+        <td>Bit dấu khác nhau trong bộ nhớ 64-bit IEEE 754.</td>
+      </tr>
+      <tr>
+        <td><code>null vs undefined</code></td>
+        <td><strong style="color:var(--green)"><code>true</code></strong></td>
+        <td><code>false</code></td>
+        <td><code>false</code></td>
+        <td>Quy tắc đặc biệt ECMA-262: null chỉ loosely equal với chính nó và undefined.</td>
+      </tr>
+      <tr>
+        <td><code>null vs 0</code></td>
+        <td><code>false</code></td>
+        <td><code>false</code></td>
+        <td><code>false</code></td>
+        <td><code>==</code> không bao giờ ép kiểu null sang 0 (chỉ <code>&gt;=</code> mới gọi ToNumber).</td>
+      </tr>
+      <tr>
+        <td><code>[ ] vs 0</code></td>
+        <td><strong style="color:var(--green)"><code>true</code></strong></td>
+        <td><code>false</code></td>
+        <td><code>false</code></td>
+        <td><code>[].toString() &rarr; "" &rarr; ToNumber("") &rarr; 0 == 0 &rarr; true</code>.</td>
+      </tr>
+      <tr>
+        <td><code>[ ] vs ![ ]</code></td>
+        <td><strong style="color:var(--green)"><code>true</code></strong></td>
+        <td><code>false</code></td>
+        <td><code>false</code></td>
+        <td><code>![] &rarr; false</code>, sau đó <code>[] == false &rarr; 0 == 0 &rarr; true</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 4: ĐỊNH DANH KIỂU PRODUCTION -->
+  <h2>4. Trục 4: Định danh kiểu dữ liệu chuẩn Senior (Bài 04)</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <span class="cs-badge">KIỂM TRA CƠ BẢN</span>
+      <h3>typeof (Primitives)</h3>
+      <p>Nhanh nhất, chạy mức register CPU. Trả về đúng tên 7 primitives + function.</p>
+      <p style="color:var(--red); font-size:13px;"><strong>Lỗi C 1995:</strong> <code>typeof null === "object"</code> (Tag bit <code>000</code> trùng NULL pointer <code>0x00</code>).</p>
+    </div>
+
+    <div class="cs-card">
+      <span class="cs-badge">MẢNG XUYÊN REALM</span>
+      <h3>Array.isArray(val)</h3>
+      <p>Đọc trực tiếp internal slot <code>[[Class]]</code>. An toàn tuyệt đối trước cross-realm iframe và Web Worker (nơi <code>instanceof Array</code> sụp đổ).</p>
+    </div>
+
+    <div class="cs-card">
+      <span class="cs-badge">PROTOTYPE CHAIN</span>
+      <h3>instanceof (Class Instance)</h3>
+      <p>Duyệt ngược chuỗi prototype chain. Không hoạt động với primitive literals (<code>"abc" instanceof String &rarr; false</code>).</p>
+    </div>
+
+    <div class="cs-card" style="grid-column: 1 / -1;">
+      <span class="cs-badge">TIÊU CHUẨN VÀNG</span>
+      <h3>Hàm phân loại kiểu vạn năng: toExactType</h3>
+      <div class="code-block">
+        <span class="code-label">JavaScript Utility</span>
+        <pre><code><span class="kw">function</span> <span class="fn">toExactType</span>(val) {
+  <span class="kw">if</span> (val === <span class="kw">null</span>) <span class="kw">return</span> <span class="str">'null'</span>;
+  <span class="kw">if</span> (val === <span class="kw">undefined</span>) <span class="kw">return</span> <span class="str">'undefined'</span>;
+  <span class="kw">return</span> Object.prototype.<span class="fn">toString</span>.<span class="fn">call</span>(val).<span class="fn">slice</span>(<span class="num">8</span>, -<span class="num">1</span>).<span class="fn">toLowerCase</span>();
+}</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHẦN 5: TOP CÂU HỎI PHỎNG VẤN SENIOR -->
+  <h2>5. Top câu hỏi phỏng vấn Senior then chốt của Module 01</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Tại sao null &gt;= 0 là true nhưng null == 0 lại là false ?</div>
+    <p><strong>Trả lời Top-Down:</strong> Do hai toán tử sử dụng hai thuật toán trừu tượng hoàn toàn khác nhau trong chuẩn ECMA-262. Toán tử so sánh quan hệ <code>&gt;=</code> chạy thuật toán <code>IsLessThan(null, 0)</code>, thực hiện ép kiểu số <code>ToNumber(null) &rarr; 0</code>, và <code>!(0 &lt; 0)</code> cho kết quả <code>true</code>. Ngược lại, toán tử bằng lỏng lẻo <code>==</code> chạy thuật toán <code>IsLooselyEqual</code>, có quy tắc độc lập: <code>null</code> chỉ bằng chính nó hoặc <code>undefined</code>, tuyệt đối không bị ép sang số 0.</p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Khi nào toán tử instanceof cho kết quả sai lệch ?</div>
+    <p><strong>Trả lời Top-Down:</strong> <code>instanceof</code> gặp 3 điểm mù lớn : (1) Môi trường Cross-Realm (Iframe/Worker), nơi mỗi Realm có một bộ nhớ Heap và Prototype riêng; (2) Primitive literals vì chuỗi thô không có prototype chain trực tiếp; (3) Prototype Mutation khi bị can thiệp bởi <code>Object.setPrototypeOf</code> hoặc ghi đè <code>Symbol.hasInstance</code>.</p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q3: JavaScript truyền tham số theo cơ chế nào ?</div>
+    <p><strong>Trả lời Top-Down:</strong> 100% là <strong>Pass-by-value</strong> (chính xác hơn là <em>Pass-by-sharing</em> đối với Object). Khi truyền đối tượng vào hàm, JavaScript sao chép con trỏ địa chỉ bộ nhớ Heap. Đột biến thuộc tính bên trong hàm sẽ ảnh hưởng bên ngoài vì chung ô nhớ, nhưng gán lại biến (re-assignment) thì không ảnh hưởng vì chỉ thay đổi con trỏ cục bộ.</p>
+  </div>
+
+  <!-- PHẦN 6: MINI-RECALL SPACED QUIZ (RULE A24) -->
+  <h2>6. Spaced-Recall Quiz: Thử thách phản xạ Module 01</h2>
+  <p>Bộ 4 câu hỏi tổng hợp bao quát kiến thức từ Bài 01 đến Bài 04 &mdash; kiểm tra độ vững trước khi sang Module 02 :</p>
+
+  <div class="quiz">
+    <h3>&#129504; Spaced Recall #1</h3>
+    <div class="q">Câu 1: Biểu thức <code>[1, 2] + [3, 4]</code> cho kết quả gì trong JavaScript ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! JavaScript không nối mảng bằng toán tử cộng giống như Python.">A. [1, 2, 3, 4]</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Cả hai mảng đều gọi ToPrimitive(hint: default) &rarr; [1,2].toString() ra '1,2' và [3,4].toString() ra '3,4'. Sau đó phép cộng chuỗi cho kết quả '1,23,4'.">B. "1,23,4"</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Toán tử + với mảng không ném TypeError.">C. TypeError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Spaced Recall #2</h3>
+    <div class="q">Câu 2: Để phân biệt <code>+0</code> và <code>-0</code> trong JavaScript, cách tiếp cận nào chuẩn xác nhất ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Phép so sánh === cho rằng +0 === -0 là true theo chuẩn IEEE 754.">A. <code>+0 === -0</code></button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Object.is(+0, -0) trả về false theo thuật toán SameValue. Ngoài ra có thể dùng 1/+0 === Infinity và 1/-0 === -Infinity.">B. <code>Object.is(+0, -0) === false</code></button>
+    <button class="opt" data-correct="false" data-explain="Sai! Math.sign(-0) trả về -0 chứ không phân biệt trực tiếp bằng boolean.">C. <code>Math.sign(-0) === -1</code></button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Spaced Recall #3</h3>
+    <div class="q">Câu 3: Đâu là lý do chính khiến <code>arr instanceof Array</code> trả về <code>false</code> khi mảng được truyền từ iframe ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Mỗi iframe là một Realm riêng biệt, sở hữu constructor Array và Array.prototype riêng trong bộ nhớ Heap. Do đó prototype của mảng iframe không cùng địa chỉ tham chiếu với window.Array.prototype.">A. Mảng trong iframe có prototype chain trỏ tới Array.prototype của Realm iframe, khác địa chỉ ô nhớ với window.Array.prototype của trang chính.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Trình duyệt hoàn toàn cho phép truyền dữ liệu object/array qua lại giữa iframe cùng origin.">B. Trình duyệt chặn bảo mật CORS nên xoá thuộc tính prototype của mảng.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Mảng tạo trong iframe vẫn là mảng thật, không bị biến thành plain object.">C. Mảng trong iframe tự động bị chuyển đổi thành Plain Object khi đi qua ranh giới iframe.</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Spaced Recall #4</h3>
+    <div class="q">Câu 4: Khi khai báo <code>let a = 10; let b = a; b = 20;</code>, biến <code>a</code> và <code>b</code> được cấp phát như thế nào trong bộ nhớ ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Number là kiểu Primitive, được lưu trực tiếp trên Call Stack trong ngăn nhớ của Execution Context. Phép gán b = a sao chép trực tiếp giá trị 10 sang ô nhớ riêng của b, do đó đổi b không ảnh hưởng a.">A. Cả hai biến được lưu trên Call Stack; b được cấp ô nhớ độc lập chứa bản sao giá trị 10.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Primitive types không cấp phát ô nhớ trên Heap (trừ khi nằm trong Closure).">B. Giá trị 10 được lưu trên Heap, cả a và b cùng trỏ tới ô nhớ đó.</button>
+    <button class="opt" data-correct="false" data-explain="Sai! a và b là hai định danh độc lập trong Variable Environment.">C. b dùng chung ngăn nhớ Call Stack với a cho đến khi bị ghi đè (Copy-on-write).</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST KẾT THÚC MODULE -->
+  <h2>7. Tuyên bố hoàn thành Module 01</h2>
+  <div class="checklist">
+    <div>&#9989; <strong>Bài 00:</strong> Đã làm chủ sân tập thực hành độc lập với Vitest test runner.</div>
+    <div>&#9989; <strong>Bài 01:</strong> Nắm sâu Call Stack vs Memory Heap, Pass-by-sharing và bất biến của Primitives.</div>
+    <div>&#9989; <strong>Bài 02:</strong> Thành thạo thuật toán ToPrimitive, ToNumber, ToString và cơ chế Autoboxing.</div>
+    <div>&#9989; <strong>Bài 03:</strong> Hiểu rõ 3 thuật toán so sánh bằng, giải mã bẫy IEEE 754 và nghịch lý <code>null &gt;= 0</code>.</div>
+    <div>&#9989; <strong>Bài 04:</strong> Làm chủ Type Checking, cross-realm iframe breakdown và hàm <code>toExactType()</code>.</div>
+    <div>&#9989; <strong>Test Suite:</strong> 37/37 tests trong <code>practice/</code> chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG TIẾP THEO -->
+  <div class="next-box">
+    <div class="nl">&#8594; Module tiếp theo</div>
+    <div class="nt">Module 02 · Execution Context, Scope Chain &amp; Closures</div>
+    <p class="nd">Bước vào "bộ não" điều phối thực thi của JavaScript Engine: Creation Phase vs Execution Phase, Variable Object, Hoisting, Temporal Dead Zone và bản chất tầng sâu của Closures.</p>
+  </div>
+
+  <div class="navbar">
+    <a href="../lessons/0004-type-checking.html">&#8592; Bài 04</a>
+    <a href="../lessons/index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Bài 05 (Sắp tới) &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Bạn đã hoàn thành xuất sắc Module 01!</strong> Hãy ôn tập lại các thẻ cheat card trên trước các buổi phỏng vấn. Khi nào sẵn sàng sang Module 02, hãy nhắn tôi nhé !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

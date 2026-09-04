@@ -38,7 +38,8 @@
   .badge.done { background: rgba(74,222,128,.15); color: var(--green); }
   .badge.now  { background: rgba(56,189,248,.15); color: var(--accent); }
   .badge.soon { background: #232838; color: var(--text-dim); }
-  .lcount { margin-left: auto; font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+  .lesson-title { flex: 1; min-width: 0; line-height: 1.4; }
+  .lcount { margin-left: auto; font-size: 12px; color: var(--text-dim); font-family: var(--mono); flex-shrink: 0; }
   .intro-card { background: var(--bg-card); border: 1px solid var(--border); border-left: 4px solid var(--accent-2); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 10px; }
 </style>
 </head>
@@ -55,8 +56,8 @@
   </div>
 
   <div class="progress-wrap">
-    <div class="progress-bar"><div class="progress-fill" style="width: 9%"></div></div>
-    <div class="progress-label">4 / ~44 bài · Đang ở Bài 03</div>
+    <div class="progress-bar"><div class="progress-fill" style="width: 12%"></div></div>
+    <div class="progress-label">5 / ~44 bài · Hoàn thành Module 01 (Sẵn sàng sang Module 02)</div>
   </div>
 
   <!-- MODULE 00 -->
@@ -65,7 +66,7 @@
     <h2>Thiết lập môi trường & Sân tập (Playground Setup)</h2>
     <p class="module-why">Chuẩn bị môi trường thực hành độc lập với Node.js 22+, Vitest, Chrome DevTools Memory Snapshot và công cụ soi AST để không bao giờ học lý thuyết "chay".</p>
     <ul class="lessons-list">
-      <li><a href="0000-playground-setup.html"><span class="badge done">Bài 00</span> Khởi tạo sân tập JavaScript Core &amp; Vitest Test Runner <span class="lcount">đã học</span></a></li>
+      <li><a href="0000-playground-setup.html"><span class="badge done">Bài 00</span><span class="lesson-title">Khởi tạo sân tập JavaScript Core &amp; Vitest Test Runner</span><span class="lcount">đã học</span></a></li>
     </ul>
   </div>
 
@@ -75,10 +76,11 @@
     <h2>Kiểu dữ liệu, Memory Model & Type Coercion</h2>
     <p class="module-why">Gốc rễ của mọi lỗi runtime bí ẩn và các câu hỏi trick trong phỏng vấn: phân bổ Call Stack vs Memory Heap, thuật toán ToPrimitive và so sánh bằng.</p>
     <ul class="lessons-list">
-      <li><a href="0001-primitive-vs-reference-types.html"><span class="badge done">Bài 01</span> Primitive vs Reference Types &amp; Mô hình bộ nhớ Call Stack vs Heap <span class="lcount">đã học</span></a></li>
-      <li><a href="0002-type-coercion.html"><span class="badge done">Bài 02</span> Bản chất Type Coercion: Thuật toán ToPrimitive, ToNumber, ToString (ECMA-262) <span class="lcount">đã học</span></a></li>
-      <li><a href="0003-equality.html"><span class="badge now">Bài 03</span> So sánh bằng: <code>===</code> vs <code>==</code> vs <code>Object.is()</code> &amp; Bẫy NaN, null, undefined <span class="lcount">sẵn sàng</span></a></li>
-      <li><span class="soon"><span class="badge soon">Bài 04</span> <code>typeof</code>, <code>instanceof</code> &amp; Kiểm tra kiểu đáng tin cậy: <code>Object.prototype.toString</code>, <code>Array.isArray</code> <span class="lcount">sắp tới</span></span></li>
+      <li><a href="0001-primitive-vs-reference-types.html"><span class="badge done">Bài 01</span><span class="lesson-title">Primitive vs Reference Types &amp; Mô hình bộ nhớ Call Stack vs Heap</span><span class="lcount">đã học</span></a></li>
+      <li><a href="0002-type-coercion.html"><span class="badge done">Bài 02</span><span class="lesson-title">Bản chất Type Coercion: Thuật toán ToPrimitive, ToNumber, ToString (ECMA-262)</span><span class="lcount">đã học</span></a></li>
+      <li><a href="0003-equality.html"><span class="badge done">Bài 03</span><span class="lesson-title">So sánh bằng: <code>===</code> vs <code>==</code> vs <code>Object.is()</code> &amp; Bẫy NaN, null, undefined</span><span class="lcount">đã học</span></a></li>
+      <li><a href="0004-type-checking.html"><span class="badge done">Bài 04</span><span class="lesson-title"><code>typeof</code>, <code>instanceof</code> &amp; Kiểm tra kiểu đáng tin cậy</span><span class="lcount">đã học</span></a></li>
+      <li><a href="../reference/01-types-memory-coercion.html" style="border-left: 3px solid var(--accent);"><span class="badge done">Tổng kết</span><span class="lesson-title">&#128209; Tổng hợp kiến thức Module 01: Memory Model, Coercion, Equality &amp; Type Checking</span><span class="lcount">tra cứu</span></a></li>
     </ul>
   </div>
 

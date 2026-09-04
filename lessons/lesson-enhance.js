@@ -153,11 +153,12 @@
 
       group.options.forEach(function (opt) {
         opt.addEventListener("click", function () {
-          var isCorrect = opt.getAttribute("data-correct") === "true";
+          var isCorrect = opt.getAttribute("data-correct") === "true" || (opt.hasAttribute("data-correct") && opt.getAttribute("data-correct") !== "false");
           // Chỉ khoá & lộ đáp án TRONG nhóm này — các câu khác không bị đụng tới
           group.options.forEach(function (other) {
             other.classList.add("disabled");
-            if (other.getAttribute("data-correct") === "true") other.classList.add("correct");
+            var otherCorrect = other.getAttribute("data-correct") === "true" || (other.hasAttribute("data-correct") && other.getAttribute("data-correct") !== "false");
+            if (otherCorrect) other.classList.add("correct");
           });
           if (!isCorrect) opt.classList.add("wrong");
           group.feedback.textContent = opt.getAttribute("data-explain") || "";

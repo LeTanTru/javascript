@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 20 · AbortController &amp; AbortSignal: Hủy request, Race Conditions &amp; Stale Responses</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 05 · Bài 20</span>
+  <h1>Bài 20 · <code>AbortController</code> &amp; <code>AbortSignal</code>: Hủy request, Race Conditions &amp; Stale Responses</h1>
+  <p class="subtitle">Làm chủ vòng đời của async operations trong thực tế: hủy fetch khi người dùng điều hướng đi, xử lý hiện tượng race condition khi người dùng gõ nhanh (typeahead search) và tránh bẫy stale closure trong data fetching.</p>
+  <p class="meta-line">&#9203; ~20 phút &middot; &#127919; Mục tiêu: Triển khai đúng cách pattern cancel-on-supersede với AbortController trong mọi async UI, sử dụng AbortSignal.timeout và AbortSignal.any để xây dựng hệ thống timeout mạnh mẽ.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 19 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 19</div>
+    <p>Ở Bài 19, chúng ta đã trang bị đầy đủ bộ công cụ xử lý song song nhiều Promise. Nhưng trong UI thực tế, nảy sinh một câu hỏi khó hơn :</p>
+    <p><em>Người dùng gõ "j" → request 1 bay đi. Gõ tiếp "ja" → request 2 bay đi. Nếu request 1 chậm hơn request 2, kết quả của request 1 sẽ về SAU và ghi đè lên UI, mặc dù đó là dữ liệu cũ ! Đây là hiện tượng <strong>Race Condition / Stale Response</strong> — lỗi UI cổ điển nhất trong async data fetching.</em></p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. AbortController API: Kiến trúc và Vòng đời</h2>
+  <p>Chuẩn Web Platform giới thiệu 2 class phối hợp với nhau :</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Class / API</th>
+          <th>Vai trò</th>
+          <th>Thuộc tính / Phương thức chính</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong><code>AbortController</code></strong></td>
+          <td>Bộ điều khiển (Controller) &mdash; giữ quyền phát lệnh hủy</td>
+          <td><code>.signal</code> (thuộc tính trả về AbortSignal)<br><code>.abort(reason?)</code> (phát lệnh hủy)</td>
+        </tr>
+        <tr>
+          <td><strong><code>AbortSignal</code></strong></td>
+          <td>Tín hiệu (Signal) &mdash; truyền thông tin hủy tới các tác vụ</td>
+          <td><code>.aborted</code> (boolean)<br><code>.reason</code> (lý do hủy)<br><code>.addEventListener('abort', cb)</code></td>
+        </tr>
+        <tr>
+          <td><strong><code>AbortSignal.timeout(ms)</code></strong></td>
+          <td>Static factory tạo signal tự hủy sau N ms</td>
+          <td>Thay thế pattern <code>setTimeout + abort</code> thủ công</td>
+        </tr>
+        <tr>
+          <td><strong><code>AbortSignal.any([s1, s2])</code></strong></td>
+          <td>Kết hợp nhiều signals, abort khi bất kỳ signal nào kích hoạt</td>
+          <td>Hữu ích khi muốn kết hợp timeout + manual cancel</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Pattern Cancel-on-Supersede: Giải pháp dứt điểm Race Condition</h2>
+  <p>Đây là pattern thiết yếu trong mọi typeahead search, autocomplete hay infinite scroll :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Pattern Cancel-on-Supersede (React / Vanilla JS)</span>
+    <pre><code><span class="kw">let</span> activeController = <span class="kw">null</span>;
+
+<span class="kw">async function</span> <span class="fn">search</span>(query) {
+  <span class="cmt">// Bước 1: Hủy bỏ request đang chạy trước khi tạo request mới</span>
+  <span class="kw">if</span> (activeController) {
+    activeController.<span class="fn">abort</span>(<span class="str">'Superseded by newer request'</span>);
+  }
+
+  <span class="cmt">// Bước 2: Tạo controller mới cho request này</span>
+  activeController = <span class="kw">new</span> AbortController();
+
+  <span class="kw">try</span> {
+    <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">`/api/search?q=<span class="kw">${query}</span>`</span>, {
+      signal: activeController.signal  <span class="cmt">// Truyền signal vào fetch</span>
+    });
+    <span class="kw">const</span> data = <span class="kw">await</span> response.<span class="fn">json</span>();
+    <span class="cmt">// Chỉ cập nhật UI khi đây là request chưa bị hủy</span>
+    <span class="fn">renderResults</span>(data);
+  } <span class="kw">catch</span> (err) {
+    <span class="kw">if</span> (err.name === <span class="str">'AbortError'</span>) {
+      console.<span class="fn">log</span>(<span class="str">'Request bị hủy, bỏ qua kết quả này'</span>);
+      <span class="kw">return</span>; <span class="cmt">// Không cập nhật UI</span>
+    }
+    <span class="kw">throw</span> err; <span class="cmt">// Các lỗi thực sự vẫn được ném ra</span>
+  }
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Tích hợp AbortSignal với Timeout: Cách chuẩn của ES2022+</h2>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Kết hợp AbortSignal.timeout + manual cancel</span>
+    <pre><code><span class="kw">async function</span> <span class="fn">fetchWithTimeout</span>(url, timeoutMs) {
+  <span class="cmt">// Cách cổ điển (trước ES2022): setTimeout thủ công</span>
+  <span class="cmt">// const controller = new AbortController();</span>
+  <span class="cmt">// const timer = setTimeout(() => controller.abort(), timeoutMs);</span>
+  <span class="cmt">// ... clearTimeout(timer) khi xong</span>
+
+  <span class="cmt">// Cách hiện đại ES2022+: static factory tự dọn dẹp</span>
+  <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(url, {
+    signal: AbortSignal.<span class="fn">timeout</span>(timeoutMs)
+  });
+  <span class="kw">return</span> response.<span class="fn">json</span>();
+}
+
+<span class="cmt">// ES2023+: Kết hợp nhiều nguyên nhân hủy</span>
+<span class="kw">const</span> userController = <span class="kw">new</span> AbortController();
+
+<span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(url, {
+  signal: AbortSignal.<span class="fn">any</span>([
+    userController.signal,       <span class="cmt">// Người dùng bấm Cancel</span>
+    AbortSignal.<span class="fn">timeout</span>(<span class="num">5000</span>)  <span class="cmt">// Hoặc timeout sau 5s</span>
+  ])
+});</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Trong React useEffect: Pattern cleanup chuẩn</div>
+    <p>Khi dùng <code>useEffect</code> với fetch trong React, luôn trả về cleanup function để hủy request khi component unmount hoặc dependency thay đổi. Đây là một trong những câu hỏi phỏng vấn Senior React phổ biến nhất !</p>
+    <pre><code>useEffect(() => {
+  <span class="kw">const</span> controller = <span class="kw">new</span> AbortController();
+
+  <span class="fn">fetch</span>(<span class="str">`/api/user/<span class="kw">${userId}</span>`</span>, { signal: controller.signal })
+    .<span class="fn">then</span>(res => res.<span class="fn">json</span>())
+    .<span class="fn">then</span>(setUser)
+    .<span class="fn">catch</span>(err => { <span class="kw">if</span> (err.name !== <span class="str">'AbortError'</span>) setError(err); });
+
+  <span class="kw">return</span> () => controller.<span class="fn">abort</span>(); <span class="cmt">// ← Cleanup function</span>
+}, [userId]);</code></pre>
+  </div>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Trong một search box typeahead, người dùng gõ nhanh "j" → "ja" → "jav". Vì sao không nên để 3 request cùng chạy song song đến khi xong mới xử lý bằng Promise.all ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Chạy 3 request song song bằng Promise.all không giải quyết được vấn đề race condition vì kết quả chỉ có khi tất cả đã xong và thứ tự phụ thuộc vào Promise.all.">A. Vì Promise.all sẽ tự động hủy các request cũ hơn</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Nếu để 3 request chạy tự do, request của 'j' có thể về trễ hơn request 'jav' và ghi đè lên UI với dữ liệu cũ (stale data). AbortController với cancel-on-supersede đảm bảo chỉ kết quả của request mới nhất được áp dụng vào UI.">B. Vì request cũ ('j', 'ja') có thể về trễ hơn request mới ('jav') gây ra stale data trên UI</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Race condition là vấn đề thực sự xảy ra; không phải tất cả request đều đảm bảo về đúng thứ tự.">C. Vì server luôn đảm bảo trả về response theo đúng thứ tự request</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Khi fetch bị hủy bởi AbortController, lỗi được ném ra là loại gì và làm thế nào để phân biệt với lỗi mạng thông thường ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Lỗi abort không phải là lỗi mạng thông thường như NetworkError hay TimeoutError.">A. NetworkError &mdash; kiểm tra err.message</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Fetch bị hủy ném ra DOMException với thuộc tính .name === 'AbortError'. Luôn kiểm tra điều kiện này trong .catch() để quyết định có nên báo lỗi cho người dùng hay không (abort thường là behavior mong muốn nên không cần hiển thị lỗi).">B. DOMException với err.name === 'AbortError' &mdash; bắt bằng <code>if (err.name === 'AbortError') return;</code></button>
+    <button class="opt" data-correct="false" data-explain="Sai! AbortError không phải là instance của TypeError.">C. TypeError &mdash; kiểm tra err instanceof TypeError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>5. Checklist tự kiểm chứng trước khi sang Bài 21</h2>
+  <div class="checklist">
+    <div>&#9989; Hiểu rõ mối quan hệ giữa AbortController (issuer) và AbortSignal (receiver).</div>
+    <div>&#9989; Triển khai được pattern Cancel-on-Supersede cho search input.</div>
+    <div>&#9989; Sử dụng đúng <code>AbortSignal.timeout(ms)</code> và <code>AbortSignal.any([...])</code>.</div>
+    <div>&#9989; Xử lý chuẩn <code>AbortError</code> trong <code>.catch()</code> mà không làm lộ lỗi sai cho người dùng.</div>
+    <div>&#9989; Toàn bộ 133 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo (Hoàn tất Module 05)</div>
+    <div class="nt">Bài 21 · Live-coding: Cài đặt Async Pool / Concurrency Limiter (<code>p-limit</code> / Task Queue)</div>
+    <p class="nd">Xây dựng từ đầu một bộ điều tiết tác vụ bất đồng bộ (Concurrency Limiter) tối đa N task đồng thời, kết hợp Queue data structure và Closure để triển khai cơ chế sliding window.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0019-promise-combinators.html">&#8592; Bài 19</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test AbortController và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

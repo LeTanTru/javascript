@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 40 · Array Methods &amp; Immutability cho React State</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 11 · Bài 40</span>
+  <h1>Bài 40 · Array Methods &amp; Immutability cho React State (<code>map</code>, <code>filter</code>, <code>reduce</code> &amp; ES2023 Non-mutating Methods)</h1>
+  <p class="subtitle">Làm chủ các thao tác Thêm, Sửa, Xóa và Tính toán trạng thái danh sách trong React mà không vi phạm nguyên tắc Bất biến (State Immutability). Khám phá các phương thức mảng hiện đại ES2023 (toSorted, toReversed, toSpliced, with) và kỹ thuật tính toán Derived State với reduce.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Trở thành chuyên gia xử lý Array State trong React, loại bỏ hoàn toàn các lỗi đột biến mảng (Array Mutation Bugs) và tối ưu hóa re-rendering.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 39 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 39</div>
+    <p>Ở Bài 39, bạn đã hiểu tại sao React yêu cầu Immutability đối với Object State. Với mảng (Array), các thao tác Thêm/Sửa/Xóa diễn ra liên tục. Làm sao để biến đổi mảng vừa thanh lịch, vừa giữ tính bất biến tuyệt đối? Hãy cùng đi vào từng kịch bản cụ thể.</p>
+  </div>
+
+  <!-- PHẦN 1: THÊM, SỬA, XÓA MẢNG BẤT BIẾN -->
+  <h2>1. Bộ 3 thao tác cơ bản: Thêm, Xóa, Sửa trong React State</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Thao tác</th><th>Cách SAI (Mutate mảng cũ)</th><th>Cách ĐÚNG CHUẨN REACT (Immutable)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Thêm (Add)</strong></td>
+        <td><code>todos.push(newItem)</code></td>
+        <td><code>setTodos(prev =&gt; [...prev, newItem])</code> (Thêm cuối)<br><code>setTodos(prev =&gt; [newItem, ...prev])</code> (Thêm đầu)</td>
+      </tr>
+      <tr>
+        <td><strong>2. Xóa (Delete by ID)</strong></td>
+        <td><code>todos.splice(index, 1)</code></td>
+        <td><code>setTodos(prev =&gt; prev.filter(item =&gt; item.id !== id))</code></td>
+      </tr>
+      <tr>
+        <td><strong>3. Sửa (Update by ID)</strong></td>
+        <td><code>todos[index].text = 'Mới'</code></td>
+        <td><code>setTodos(prev =&gt; prev.map(item =&gt; item.id === id ? { ...item, text: 'Mới' } : item))</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2: ES2023 NON-MUTATING METHODS -->
+  <h2>2. Cuộc cách mạng ES2023: Non-mutating Array Methods</h2>
+  <p>Trước ES2023, các phương thức như <code>sort()</code>, <code>reverse()</code>, <code>splice()</code> đều làm thay đổi trực tiếp mảng gốc (Mutating). Giờ đây chuẩn ECMAScript đã bổ sung bộ 4 phương thức an toàn tuyệt đối cho React State:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; ES2023 Non-mutating Methods</span>
+    <pre><code><span class="kw">const</span> numbers = [<span class="num">3</span>, <span class="num">1</span>, <span class="num">4</span>, <span class="num">1</span>, <span class="num">5</span>];
+
+<span class="cmt">// 1. toSorted: Sắp xếp mảng trả về mảng mới (Không đổi mảng numbers)</span>
+<span class="kw">const</span> sorted = numbers.<span class="fn">toSorted</span>((a, b) =&gt; a - b); <span class="cmt">// [1, 1, 3, 4, 5]</span>
+
+<span class="cmt">// 2. toReversed: Đảo ngược mảng trả về mảng mới</span>
+<span class="kw">const</span> reversed = numbers.<span class="fn">toReversed</span>(); <span class="cmt">// [5, 1, 4, 1, 3]</span>
+
+<span class="cmt">// 3. toSpliced: Chèn/Xóa tại vị trí bất kỳ trả về mảng mới</span>
+<span class="kw">const</span> inserted = numbers.<span class="fn">toSpliced</span>(<span class="num">2</span>, <span class="num">0</span>, <span class="num">999</span>); <span class="cmt">// [3, 1, 999, 4, 1, 5]</span>
+
+<span class="cmt">// 4. with: Thay thế phần tử tại index chỉ định trả về mảng mới</span>
+<span class="kw">const</span> updated = numbers.<span class="fn">with</span>(<span class="num">0</span>, <span class="num">100</span>); <span class="cmt">// [100, 1, 4, 1, 5]</span></code></pre>
+  </div>
+
+  <!-- PHẦN 3: DERIVED STATE VỚI REDUCE -->
+  <h2>3. Tính toán Derived State với <code>reduce</code> (Tránh lưu thừa State)</h2>
+  <p>Một lỗi phổ biến trong React là tạo thêm <code>useState(total)</code> và cập nhật nó trong <code>useEffect</code>. Thay vào đó, hãy tính toán trực tiếp trong hàm component bằng <strong>Derived State</strong>:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Derived State Calculation Pattern</span>
+    <pre><code><span class="kw">function</span> <span class="fn">ShoppingCart</span>({ items }) {
+  <span class="cmt">// ✅ Tính toán trực tiếp trong render body bằng reduce: Không cần useState thừa thãi!</span>
+  <span class="kw">const</span> totalAmount = items.<span class="fn">reduce</span>((sum, item) =&gt; sum + item.price * item.quantity, <span class="num">0</span>);
+  <span class="kw">const</span> totalItems = items.<span class="fn">reduce</span>((sum, item) =&gt; sum + item.quantity, <span class="num">0</span>);
+
+  <span class="kw">return</span> (
+    &lt;<span class="kw">div</span>&gt;
+      &lt;<span class="kw">h3</span>&gt;Giỏ hàng ({totalItems} món)&lt;/<span class="kw">h3</span>&gt;
+      &lt;<span class="kw">p</span>&gt;Tổng thanh toán: ${totalAmount}&lt;/<span class="kw">p</span>&gt;
+    &lt;/<span class="kw">div</span>&gt;
+  );
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code nào sau đây sẽ khiến React KHÔNG re-render lại danh sách khi người dùng nhấn nút thêm phần tử?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! setItems(prev =&gt; { prev.push(item); return prev; }) trực tiếp mutate mảng cũ và trả về cùng một tham chiếu bộ nhớ. React so sánh Object.is(prev, next) thấy không đổi nên sẽ hủy re-render.">A. setItems(prev =&gt; { prev.push(item); return prev; })</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Đây là cách đúng chuẩn tạo mảng mới.">B. setItems(prev =&gt; [...prev, item])</button>
+    <button class="opt" data-correct="false" data-explain="Sai! concat() trả về mảng mới nên React vẫn re-render bình thường.">C. setItems(prev =&gt; prev.concat(item))</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 5: CHECKLIST -->
+  <h2>5. Checklist tự kiểm chứng — Bài 40</h2>
+  <div class="checklist">
+    <div>&#9989; Thành thạo bộ 3 thao tác <strong>Thêm (Spread), Xóa (Filter), Sửa (Map)</strong> trong React State.</div>
+    <div>&#9989; Nhận biết và tránh xa các hàm làm mutate mảng: <code>push</code>, <code>pop</code>, <code>splice</code>, <code>sort</code>, <code>reverse</code>.</div>
+    <div>&#9989; Sử dụng thành thạo các hàm ES2023: <code>toSorted</code>, <code>toReversed</code>, <code>toSpliced</code>, <code>with</code>.</div>
+    <div>&#9989; Áp dụng <strong>Derived State</strong> với <code>reduce</code> thay vì tạo state phụ trong <code>useEffect</code>.</div>
+    <div>&#9989; Toàn bộ 41 test suites (249/249 unit tests) trong thư mục <code>practice</code> đã chạy XANH 100%.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 41 · Async/Await, Fetch API &amp; AbortController trong React</div>
+    <p class="nd">Kỹ thuật data fetching chuẩn trong useEffect, giải quyết Race Conditions và hủy bỏ HTTP requests khi unmount bằng AbortController.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0039-react-foundations-es6.html">&#8592; Bài 39</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0041-react-foundations-async-fetch.html">Bài 41 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng các bài test Array Immutability và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

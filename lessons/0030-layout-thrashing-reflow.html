@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 30 · Layout Thrashing, Repaint, Reflow &amp; Tối ưu hiệu năng DOM Rendering</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 07 · Bài 30 (DOM, Browser Engine &amp; Web APIs)</span>
+  <h1>Bài 30 · Layout Thrashing, Repaint, Reflow &amp; Tối ưu hiệu năng DOM Rendering</h1>
+  <p class="subtitle">Giải mã nguyên nhân sâu xa gây tụt FPS và giật lag trên trình duyệt: Hiện tượng Forced Synchronous Layout (Layout Thrashing), danh sách các API đo đạc kích hoạt Reflow bắt buộc, giải pháp FastDOM batching và kỹ thuật DocumentFragment.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Nhận diện mã nguồn gây Layout Thrashing trong vòng lặp, áp dụng mô hình Đọc trước - Ghi sau (Read-first, Write-later), gom DOM mutations bằng DocumentFragment và tối ưu cô lập vùng render với CSS contain / content-visibility.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 29 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 29</div>
+    <p>Ở Bài 29, bạn đã tối ưu hóa xử lý sự kiện với <code>Event Delegation</code> và <code>{ passive: true }</code>. Sau khi nhận sự kiện, thao tác thường thấy là cập nhật DOM (sửa nội dung, đổi kích thước, cuộn trang). Nếu thao tác DOM không đúng cách, bạn sẽ kích hoạt <strong>Layout Thrashing</strong> &mdash; thủ phạm số 1 gây đơ giật giao diện.</p>
+  </div>
+
+  <!-- PHẦN 1: BẢN CHẤT LAYOUT THRASHING -->
+  <h2>1. Layout Thrashing (Forced Synchronous Layout) là gì ?</h2>
+  <p>Bình thường, trình duyệt rất thông minh: nó sẽ <strong>gom nhiều thao tác sửa đổi DOM (Writes) vào hàng đợi</strong> và chỉ tính toán lại Layout một lần duy nhất vào cuối khung hình (Frame).<br>
+  Tuy nhiên, nếu bạn <strong>vừa sửa DOM (Write) rồi ngay lập tức đọc thông số hình học (Read)</strong> trong vòng lặp, trình duyệt bị ép buộc phải tạm dừng JavaScript và <em>tính toán lại Layout ngay lập tức</em> để trả về con số chính xác. Quá trình này lặp đi lặp lại $N$ lần được gọi là <strong>Layout Thrashing</strong>.</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cạm bẫy Layout Thrashing (BAD vs GOOD)</span>
+    <pre><code><span class="cmt">// &#10060; BAD: Đan xen Read (offsetWidth) và Write (width) &rarr; N lần Reflow!</span>
+<span class="kw">for</span> (<span class="kw">let</span> i = <span class="num">0</span>; i < elements.length; i++) {
+  <span class="kw">const</span> width = elements[i].offsetWidth;     <span class="cmt">// READ (Forced Reflow!)</span>
+  elements[i].style.width = `${width + <span class="num">10</span>}px`; <span class="cmt">// WRITE (Làm bẩn Layout)</span>
+}
+
+<span class="cmt">// &#9989; GOOD: Đọc hết toàn bộ trước (Batch Reads), sau đó mới Ghi (Batch Writes) &rarr; 1 lần Reflow!</span>
+<span class="kw">const</span> newWidths = elements.<span class="fn">map</span>(el => el.offsetWidth + <span class="num">10</span>); <span class="cmt">// Batch READS</span>
+elements.<span class="fn">forEach</span>((el, i) => {
+  el.style.width = `${newWidths[i]}px`;                     <span class="cmt">// Batch WRITES</span>
+});</code></pre>
+  </div>
+
+  <!-- PHẦN 2: DANH SÁCH CÁC API GÂY FORCED LAYOUT -->
+  <h2>2. Danh sách các thuộc tính &amp; phương thức ép buộc Reflow</h2>
+  <p>Bất kỳ khi nào bạn truy cập các thuộc tính sau <em>sau một thao tác sửa đổi DOM</em>, trình duyệt bắt buộc phải chạy Reflow ngay lập tức :</p>
+  <table class="data">
+    <thead>
+      <tr><th>Nhóm API</th><th>Thuộc tính / Phương thức</th><th>Mẹo tránh lỗi</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Kích thước Box</strong></td>
+        <td><code>offsetWidth</code>, <code>offsetHeight</code>, <code>clientWidth</code>, <code>clientHeight</code></td>
+        <td>Lưu vào biến (cache) nếu kích thước không đổi</td>
+      </tr>
+      <tr>
+        <td><strong>Tọa độ &amp; Vị trí</strong></td>
+        <td><code>offsetLeft</code>, <code>offsetTop</code>, <code>clientLeft</code>, <code>clientTop</code></td>
+        <td>Đọc trước khi sửa đổi CSS</td>
+      </tr>
+      <tr>
+        <td><strong>Cuộn trang</strong></td>
+        <td><code>scrollWidth</code>, <code>scrollHeight</code>, <code>scrollLeft</code>, <code>scrollTop</code></td>
+        <td>Dùng <code>IntersectionObserver</code> thay vì đo <code>scrollTop</code> liên tục</td>
+      </tr>
+      <tr>
+        <td><strong>Đo đạc hình học</strong></td>
+        <td><code>getBoundingClientRect()</code>, <code>getComputedStyle()</code></td>
+        <td>Gom vào <code>requestAnimationFrame</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 3: DOCUMENT FRAGMENT & BATCHING -->
+  <h2>3. Gom cụm DOM với <code>DocumentFragment</code></h2>
+  <p>Khi cần thêm 1,000 phần tử vào danh sách, nếu bạn gọi <code>parentElement.appendChild(node)</code> 1,000 lần, trình duyệt sẽ phải cập nhật DOM 1,000 lần.<br>
+  Giải pháp : Sử dụng <strong><code>DocumentFragment</code></strong> &mdash; một nút DOM nhẹ nằm hoàn toàn trong bộ nhớ RAM, không thuộc cây hiển thị :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Tối ưu chèn 1,000 phần tử với DocumentFragment</span>
+    <pre><code><span class="kw">const</span> fragment = document.<span class="fn">createDocumentFragment</span>();
+
+<span class="kw">for</span> (<span class="kw">let</span> i = <span class="num">0</span>; i < <span class="num">1000</span>; i++) {
+  <span class="kw">const</span> item = document.<span class="fn">createElement</span>(<span class="str">'li'</span>);
+  item.textContent = `Sản phẩm ${i}`;
+  fragment.<span class="fn">appendChild</span>(item); <span class="cmt">// Thao tác 100% trong RAM, không gây Reflow</span>
+}
+
+document.<span class="fn">getElementById</span>(<span class="str">'list'</span>).<span class="fn">appendChild</span>(fragment); <span class="cmt">// Chỉ 1 lần gắn vào DOM duy nhất!</span></code></pre>
+  </div>
+
+  <!-- PHẦN 4: CSS CONTAINMENT & CONTENT-VISIBILITY -->
+  <h2>4. Tối ưu hiện đại: <code>contain</code> &amp; <code>content-visibility</code></h2>
+  <ul>
+    <li><code>contain: content</code> hoặc <code>contain: layout size style</code> : Cô lập cây DOM con khỏi phần còn lại của trang web. Khi có mutation bên trong thẻ này, trình duyệt <strong>chỉ tính toán Reflow cục bộ</strong> trong thẻ đó mà không lan sang toàn bộ tài liệu.</li>
+    <li><code>content-visibility: auto</code> : Tự động bỏ qua việc render (bỏ qua cả Layout lẫn Paint) cho các phần tử <strong>nằm ngoài màn hình nhìn thấy (Off-screen)</strong> cho đến khi người dùng cuộn tới &mdash; tăng tốc độ nạp trang ban đầu lên gấp 5-10 lần !</li>
+  </ul>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code nào sau đây sẽ gây ra hiện tượng Layout Thrashing nghiêm trọng nhất ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Trong mỗi vòng lặp, việc đọc offsetHeight ngay sau khi sửa style.height sẽ ép trình duyệt phải tính toán lại Layout liên tục (Forced Synchronous Layout).">A. for (let el of cards) { el.style.height = (el.offsetHeight + 5) + 'px'; }</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Đoạn code này chỉ thực hiện 1 lần gán class, không đan xen Read/Write.">B. cardContainer.classList.add('expanded');</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Tách riêng 2 vòng lặp (1 đọc, 1 ghi) là giải pháp tối ưu chỉ gây 1 lần Reflow.">C. const heights = cards.map(c => c.offsetHeight); cards.forEach((c, i) => c.style.height = heights[i] + 'px');</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Ưu điểm nổi bật nhất của DocumentFragment khi tạo danh sách DOM lớn là gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! DocumentFragment là đối tượng JavaScript trong bộ nhớ, không gửi lên GPU.">A. Tự động chuyển việc render lên GPU</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! DocumentFragment tồn tại hoàn toàn trong RAM, cho phép gom hàng ngàn nodes con và chỉ kích hoạt 1 lần gắn kết (1 Reflow) khi append vào DOM thực tế.">B. Tồn tại hoàn toàn trong RAM, chỉ kích hoạt 1 lần Reflow duy nhất khi gắn vào cây DOM thực</button>
+    <button class="opt" data-correct="false" data-explain="Sai! DocumentFragment không tự động xóa sự kiện.">C. Tự động xóa các sự kiện rò rỉ</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 6: CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng — Bài 30</h2>
+  <div class="checklist">
+    <div>&#9989; Định nghĩa chính xác cơ chế của Forced Synchronous Layout / Layout Thrashing.</div>
+    <div>&#9989; Nhận biết danh sách các API đo đạc kích hoạt Reflow (<code>offsetWidth</code>, <code>getBoundingClientRect</code>).</div>
+    <div>&#9989; Thành thạo nguyên tắc <strong>Read-first, Write-later (FastDOM pattern)</strong>.</div>
+    <div>&#9989; Sử dụng <code>DocumentFragment</code> để gom cụm hàng ngàn DOM mutations.</div>
+    <div>&#9989; Hiểu ứng dụng của <code>contain: layout</code> và <code>content-visibility: auto</code>.</div>
+    <div>&#9989; Toàn bộ 31 test suites (193/193 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo trong Module 07 (Bài cuối Module)</div>
+    <div class="nt">Bài 31 · Web Workers, Service Workers, Cache API &amp; Đa luồng trên Browser</div>
+    <p class="nd">Phá vỡ giới hạn đơn luồng của JavaScript: Xử lý tính toán nặng ngầm với Web Workers, biến Web App thành PWA offline với Service Workers &amp; Cache Storage.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0029-event-propagation-delegation.html">&#8592; Bài 29</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0031-web-workers-service-workers.html">Bài 31 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Layout Thrashing và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

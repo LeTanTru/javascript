@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 28 · Critical Rendering Path: HTML/CSS Parser → DOM/CSSOM → Render Tree → Layout → Paint → Composite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 07 · Bài 28 (Mở đầu Module 07)</span>
+  <h1>Bài 28 · Critical Rendering Path (CRP): Từ HTML/CSS đến Điểm ảnh trên màn hình</h1>
+  <p class="subtitle">Khám phá toàn bộ 6 giai đoạn trình duyệt chuyển đổi mã nguồn thành giao diện thực tế: DOM Tree, CSSOM Tree, Render Tree, Layout (Reflow), Paint (Repaint) và GPU Compositing — Nền tảng cốt lõi của Web Performance Optimization.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Nắm vững 6 bước trong Critical Rendering Path, phân biệt rõ cơ chế Render-Blocking của CSS vs Parser-Blocking của JavaScript, và hiểu chính xác sự khác biệt giữa display:none vs visibility:hidden trong Render Tree.</p>
+
+  <!-- BẮC CẦU TỪ MODULE 06 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Module 06 sang Module 07</div>
+    <p>Ở Module 06, bạn đã làm chủ logic và cấu trúc dữ liệu JavaScript với Functional Programming. Bước sang <strong>Module 07: DOM, Browser Engine &amp; Web APIs</strong>, chúng ta sẽ mở chiếc hộp đen của Trình duyệt (Browser Engine) để hiểu cách trình duyệt nạp, phân tích và vẽ từng pixel lên màn hình, từ đó tối ưu hiệu năng ứng dụng web chuẩn Senior.</p>
+  </div>
+
+  <!-- PHẦN 1: 6 BƯỚC CRITICAL RENDERING PATH -->
+  <h2>1. Toàn cảnh 6 giai đoạn của Critical Rendering Path</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Bước</th><th>Tên giai đoạn</th><th>Nhiệm vụ chính</th><th>Đặc tính</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1</strong></td>
+        <td><strong>DOM Construction</strong></td>
+        <td>Bytes &rarr; Characters &rarr; Tokens &rarr; Nodes &rarr; <strong>DOM Tree</strong></td>
+        <td>Xử lý theo luồng (Streaming), tăng dần theo từng gói tin mạng</td>
+      </tr>
+      <tr>
+        <td><strong>2</strong></td>
+        <td><strong>CSSOM Construction</strong></td>
+        <td>Bytes &rarr; Tokens &rarr; Rules &rarr; <strong>CSSOM Tree</strong> (Cascade styles)</td>
+        <td><strong>Render-Blocking</strong>: Trình duyệt không render đến khi CSSOM xong</td>
+      </tr>
+      <tr>
+        <td><strong>3</strong></td>
+        <td><strong>Render Tree</strong></td>
+        <td>Kết hợp DOM + CSSOM, <em>chỉ giữ lại các phần tử hiển thị</em></td>
+        <td>Loại bỏ <code>&lt;head&gt;</code>, <code>&lt;script&gt;</code> và <code>display: none</code></td>
+      </tr>
+      <tr>
+        <td><strong>4</strong></td>
+        <td><strong>Layout (Reflow)</strong></td>
+        <td>Tính toán tọa độ hình học chính xác (x, y, width, height) của từng node</td>
+        <td>Tốn kém CPU nhất khi có DOM mutation làm đổi kích thước</td>
+      </tr>
+      <tr>
+        <td><strong>5</strong></td>
+        <td><strong>Paint (Repaint)</strong></td>
+        <td>Vẽ màu sắc, hình ảnh, văn bản, đường viền, bóng đổ lên các lớp (layers)</td>
+        <td>Chuyển đổi các lệnh vẽ hình học thành bitmap điểm ảnh</td>
+      </tr>
+      <tr>
+        <td><strong>6</strong></td>
+        <td><strong>Compositing</strong></td>
+        <td>Gửi các lớp (Layers) lên <strong>GPU</strong> để ghép lại và hiển thị lên màn hình</td>
+        <td>Siêu nhanh, chạy trên GPU luồng riêng (Compositor Thread)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2: BẢN CHẤT RENDER TREE -->
+  <h2>2. Bí mật của Render Tree: <code>display: none</code> vs <code>visibility: hidden</code></h2>
+  <div class="callout tip">
+    <div class="ct">&#128161; Câu hỏi phỏng vấn kinh điển</div>
+    <p><strong>display: none</strong> và <strong>visibility: hidden</strong> khác nhau như thế nào ở tầng Render Engine ?</p>
+    <ul>
+      <li><code>display: none</code> &rarr; Phần tử <strong>hoàn toàn bị loại khỏi Render Tree</strong>. Trình duyệt không tạo Render Object, không tính toán Layout và không chiếm bất kỳ diện tích nào trên màn hình.</li>
+      <li><code>visibility: hidden</code> / <code>opacity: 0</code> &rarr; Phần tử <strong>VẪN NẰM TRONG RENDER TREE</strong>. Trình duyệt vẫn phải tính toán kích thước, vị trí trong giai đoạn Layout (chiếm khoảng trống), chỉ bỏ qua bước vẽ điểm ảnh ở Paint.</li>
+    </ul>
+  </div>
+
+  <!-- PHẦN 3: SCRIPT BLOCKING & DEFER / ASYNC -->
+  <h2>3. Cơ chế Script Blocking: Normal vs <code>defer</code> vs <code>async</code></h2>
+  <table class="data">
+    <thead>
+      <tr><th>Cú pháp</th><th>Tải file JS (Download)</th><th>Thực thi file JS (Execute)</th><th>Bảo toàn thứ tự ?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>&lt;script src="..."&gt;</code></td>
+        <td><strong>Chặn HTML Parser</strong> ngay lập tức</td>
+        <td>Chạy ngay khi tải xong (chặn tiếp HTML Parser)</td>
+        <td>Có (theo thứ tự file)</td>
+      </tr>
+      <tr>
+        <td><code>&lt;script defer src="..."&gt;</code></td>
+        <td>Tải ngầm song song (không chặn HTML Parser)</td>
+        <td>Chạy sau khi <strong>HTML parse xong</strong> (ngay trước sự kiện <code>DOMContentLoaded</code>)</td>
+        <td><strong>Có</strong> (chuẩn cho code có phụ thuộc thư viện)</td>
+      </tr>
+      <tr>
+        <td><code>&lt;script async src="..."&gt;</code></td>
+        <td>Tải ngầm song song (không chặn HTML Parser)</td>
+        <td><strong>Chạy ngay lập tức khi tải xong</strong> (tạm dừng HTML Parser lúc thực thi)</td>
+        <td><strong>Không</strong> (file nào tải xong trước chạy trước &mdash; dùng cho Google Analytics)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 4: 3 LOẠI TRIGGERS HIỆU NĂNG -->
+  <h2>4. Ba tầng chi phí khi thay đổi CSS (Performance Triggers)</h2>
+  <p>Không phải mọi thay đổi CSS đều có chi phí như nhau:</p>
+  <ul>
+    <li><strong>Layout Trigger (Tốn kém nhất) :</strong> <code>width</code>, <code>height</code>, <code>margin</code>, <code>padding</code>, <code>top</code>, <code>left</code>, <code>font-size</code> &rarr; Kích hoạt lại toàn bộ <strong>Layout &rarr; Paint &rarr; Composite</strong>.</li>
+    <li><strong>Paint Trigger (Trung bình) :</strong> <code>color</code>, <code>background-color</code>, <code>box-shadow</code>, <code>visibility</code> &rarr; Kích hoạt lại <strong>Paint &rarr; Composite</strong> (bỏ qua Layout).</li>
+    <li><strong>Composite Only (Tối ưu nhất - 60fps) :</strong> <code>transform</code>, <code>opacity</code> &rarr; Chỉ chạy trên GPU ở bước <strong>Composite</strong> (bỏ qua cả Layout và Paint)!</li>
+  </ul>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Thuộc tính CSS nào sau đây khi thay đổi sẽ KHÔNG kích hoạt giai đoạn Layout và Paint mà chỉ chạy trực tiếp trên GPU (Composite) ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Thay đổi left kích hoạt Layout (Reflow).">A. left: 50px</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! transform và opacity được xử lý hoàn toàn trên GPU Compositor Thread, không gây Reflow lẫn Repaint, giúp đạt 60fps mượt mà.">B. transform: translateX(50px) và opacity: 0.5</button>
+    <button class="opt" data-correct="false" data-explain="Sai! background-color kích hoạt giai đoạn Paint.">C. background-color: red</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Sự khác biệt then chốt giữa &lt;script defer&gt; và &lt;script async&gt; là gì ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! defer đảm bảo chạy theo đúng thứ tự xuất hiện trong HTML sau khi DOM parse xong; async chạy ngay khi tải xong bất kể thứ tự.">A. defer luôn bảo toàn thứ tự file và chạy sau khi HTML parse xong; async chạy ngay khi tải xong không màng thứ tự</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Cả hai đều tải ngầm song song với HTML Parser.">B. defer chặn HTML parser, còn async thì không</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. async chỉ dùng được trong thẻ &lt;head&gt;</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 6: CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng — Bài 28</h2>
+  <div class="checklist">
+    <div>&#9989; Mô tả chính xác 6 bước của Critical Rendering Path (DOM &rarr; CSSOM &rarr; Render Tree &rarr; Layout &rarr; Paint &rarr; Composite).</div>
+    <div>&#9989; Giải thích sự khác biệt giữa <code>display: none</code> vs <code>visibility: hidden</code> trong Render Tree.</div>
+    <div>&#9989; Nắm chắc cơ chế tải và thực thi của <code>defer</code> vs <code>async</code>.</div>
+    <div>&#9989; Nhận biết các thuộc tính CSS chỉ chạy trên GPU Compositor (<code>transform</code>, <code>opacity</code>).</div>
+    <div>&#9989; Toàn bộ 29 test suites (181/181 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo trong Module 07</div>
+    <div class="nt">Bài 29 · Event Propagation: Bubbling vs Capturing, Event Delegation &amp; passive: true listeners</div>
+    <p class="nd">Khám phá 3 pha truyền sự kiện trong DOM (Capture, Target, Bubble), kỹ thuật Event Delegation xử lý hàng ngàn items và tối ưu cuộn trang với passive listeners.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0027-flatten-deep-equal.html">&#8592; Bài 27</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0029-event-propagation-delegation.html">Bài 29 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Critical Rendering Path và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

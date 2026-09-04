@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 35 · ESM vs CommonJS: Live Bindings, Top-level Await &amp; Circular Dependencies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 09 · Bài 35 (Hoàn tất Module 09)</span>
+  <h1>Bài 35 · ESM vs CommonJS (CJS): Live Bindings, Top-level <code>await</code> &amp; Xử lý Circular Dependencies</h1>
+  <p class="subtitle">Đào sâu cơ chế hoạt động bên dưới của 2 hệ thống module thống trị JavaScript: CommonJS (Node.js truyền thống) và ECMAScript Modules (ESM chuẩn quốc tế). Khám phá vòng đời 3 giai đoạn của ESM, bản chất Live Bindings vs Value Copy, bẫy phụ thuộc xoay vòng và Dual Package Hazard trong các thư viện hiện đại.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Phân biệt chính xác CJS vs ESM dưới góc độ Runtime vs Compile-time, giải mã cơ chế Live Bindings, hiểu rõ cách giải quyết Circular Dependencies trong từng hệ thống và cấu hình Dual Package an toàn.</p>
+
+  <!-- BẮC CẦU TỪ MODULE 08 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Module 08 sang Module 09</div>
+    <p>Sau khi làm chủ cách V8 Engine biên dịch và quản lý bộ nhớ, câu hỏi tiếp theo là: <em>Làm sao JavaScript tải, liên kết và chia sẻ biến/hàm giữa các file mã nguồn khác nhau?</em> Tại sao <code>require()</code> lại đồng bộ trong khi <code>import</code> lại bất đồng bộ và hỗ trợ Tree-shaking? Hãy cùng bóc tách kiến trúc Module Systems.</p>
+  </div>
+
+  <!-- PHẦN 1: BẢN CHẤT CỦA COMMONJS (CJS) -->
+  <h2>1. CommonJS (CJS): Module Wrapper &amp; Value Copy</h2>
+  <p>Khi Node.js thực thi một file CJS, nó tự động bọc toàn bộ mã nguồn của bạn bên trong một hàm IIFE gọi là <strong>Module Wrapper</strong>:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; CJS Module Wrapper (Node.js Internal)</span>
+    <pre><code>(function (exports, require, module, __filename, __dirname) {
+  <span class="cmt">// Code của bạn nằm tại đây</span>
+  <span class="kw">let</span> count = <span class="num">0</span>;
+  <span class="kw">function</span> <span class="fn">increment</span>() { count++; }
+  module.exports = { count, increment };
+});</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Đặc điểm sống còn của CommonJS</div>
+    <ul>
+      <li><strong>Runtime &amp; Synchronous:</strong> <code>require()</code> là một hàm JavaScript bình thường, chạy tuần tự đồng bộ tại runtime (chặn I/O file).</li>
+      <li><strong>Value Copy (Sao chép giá trị):</strong> Khi <code>module.exports = { count }</code>, giá trị của <code>count</code> được copy tại thời điểm gán. Khi hàm <code>increment()</code> thay đổi biến <code>count</code> nội bộ, biến <code>count</code> bên file import <strong>không hề thay đổi</strong>!</li>
+      <li><strong>Caching:</strong> Kết quả của <code>module.exports</code> được lưu vào <code>require.cache</code>. Các lần gọi <code>require()</code> tiếp theo chỉ trả về tham chiếu đã lưu trong cache.</li>
+    </ul>
+  </div>
+
+  <!-- PHẦN 2: ESM 3-PHASE LIFECYCLE & LIVE BINDINGS -->
+  <h2>2. ECMAScript Modules (ESM): 3 Giai đoạn &amp; Live Bindings</h2>
+  <p>Khác với CJS chạy tức thì, ESM hoạt động theo tiêu chuẩn chính thức của ECMAScript qua <strong>3 giai đoạn độc lập (3-Phase Lifecycle)</strong>:</p>
+
+  <table class="data">
+    <thead>
+      <tr><th>Giai đoạn (Phase)</th><th>Nhiệm vụ</th><th>Đặc điểm cốt lõi</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Construction (Tải &amp; Parse)</strong></td>
+        <td>Tìm tất cả file, tải mã nguồn và phân tích cú pháp tĩnh thành <code>Module Record</code>.</td>
+        <td>Phân tích tĩnh (Static Analysis) trước khi chạy. Cho phép Rollup/Webpack thực hiện <strong>Tree-shaking</strong> loại bỏ dead-code.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Instantiation (Liên kết)</strong></td>
+        <td>Cấp phát ô nhớ cho các <code>export</code> và liên kết (wire-up) chúng với các <code>import</code>.</td>
+        <td>Tạo ra <strong>Live Bindings</strong> (Con trỏ trỏ thẳng vào Module Environment Record). Chưa thực thi code!</td>
+      </tr>
+      <tr>
+        <td><strong>3. Evaluation (Thực thi)</strong></td>
+        <td>Chạy code từ lá lên gốc trong Module Graph để điền giá trị thực tế vào các ô nhớ.</td>
+        <td>Hỗ trợ <strong>Top-level <code>await</code></strong>, dừng việc thực thi module cha cho đến khi module con giải quyết Promise xong.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Minh họa Live Bindings trong ESM</span>
+    <pre><code><span class="cmt">// counter.mjs</span>
+<span class="kw">export</span> <span class="kw">let</span> count = <span class="num">0</span>;
+<span class="kw">export</span> <span class="kw">function</span> <span class="fn">increment</span>() { count++; }
+
+<span class="cmt">// main.mjs</span>
+<span class="kw">import</span> { count, increment } <span class="kw">from</span> <span class="str">'./counter.mjs'</span>;
+console.<span class="fn">log</span>(count); <span class="cmt">// 0</span>
+<span class="fn">increment</span>();
+console.<span class="fn">log</span>(count); <span class="cmt">// 1 &lt;-- TỰ ĐỘNG CẬP NHẬT nhờ Live Binding! (Không thể làm được trong CJS)</span>
+
+<span class="cmt">// count = 10; // TypeError: Assignment to constant variable (Import bindings là Read-Only bên ngoài)</span></code></pre>
+  </div>
+
+  <!-- PHẦN 3: SO SÁNH CIRCULAR DEPENDENCIES -->
+  <h2>3. Giải mã Phụ thuộc xoay vòng (Circular Dependencies)</h2>
+  <p>Khi Module A import Module B, và Module B lại import ngược lại Module A:</p>
+
+  <table class="data">
+    <thead>
+      <tr><th>Hệ thống Module</th><th>Cách xử lý Circular Dependency</th><th>Hành vi và Rủi ro Runtime</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>CommonJS (CJS)</strong></td>
+        <td>Node.js trả về <code>exports</code> object <strong>chưa hoàn thiện (Partial Exports)</strong> tại thời điểm vòng lặp bị phát hiện.</td>
+        <td>Nếu Module B truy cập thuộc tính mà Module A chưa kịp gán, nó sẽ nhận giá trị <code>undefined</code>. Dễ gây bug <code>TypeError: Cannot read properties of undefined</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>ECMAScript Modules (ESM)</strong></td>
+        <td>Nhờ tách biệt giai đoạn <strong>Instantiation</strong> và <strong>Evaluation</strong>, các bindings đã được wire-up trước khi chạy code.</td>
+        <td>Hàm (Function Declarations) được hoisted nên gọi an toàn. Nhưng nếu truy cập biến <code>let/const</code> trước khi dòng gán của nó chạy, sẽ ném lỗi <strong>ReferenceError (TDZ - Temporal Dead Zone)</strong>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 4: DUAL PACKAGE HAZARD & MODERN TOOLING -->
+  <h2>4. Dual Package Hazard &amp; Interoperability (CJS vs ESM)</h2>
+  <p>Khi viết thư viện npm hỗ trợ cả hai hệ sinh thái, việc xuất bản cả CJS build (<code>dist/index.cjs</code>) và ESM build (<code>dist/index.mjs</code>) có thể gây ra hiện tượng <strong>Dual Package Hazard</strong>: Khi một ứng dụng vô tình import cả 2 bản, module sẽ bị nạp 2 lần trong bộ nhớ, dẫn đến 2 singleton instances độc lập (gãy cơ chế <code>instanceof</code> và state caching)!</p>
+
+  <div class="code-block">
+    <span class="code-label">JSON &mdash; Cấu hình exports field chuẩn trong package.json</span>
+    <pre><code>{
+  <span class="str">"name"</span>: <span class="str">"my-awesome-lib"</span>,
+  <span class="str">"type"</span>: <span class="str">"module"</span>,
+  <span class="str">"exports"</span>: {
+    <span class="str">"import"</span>: <span class="str">"./dist/index.js"</span>,
+    <span class="str">"require"</span>: <span class="str">"./dist/index.cjs"</span>,
+    <span class="str">"types"</span>: <span class="str">"./dist/index.d.ts"</span>
+  }
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Khác biệt cơ bản nhất về cơ chế xuất biến giữa CommonJS và ESM là gì ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! CommonJS copy giá trị tại thời điểm export (Value Copy), còn ESM tạo liên kết động trực tiếp tới ô nhớ (Live Bindings) giúp importer luôn đọc được giá trị mới nhất.">A. CommonJS xuất bản sao giá trị (Value Copy), còn ESM xuất liên kết động (Live Bindings)</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Cả hai đều có thể xuất primitive và object.">B. CommonJS chỉ xuất được Primitive còn ESM chỉ xuất được Object</button>
+    <button class="opt" data-correct="false" data-explain="Sai! ESM là chuẩn ECMAScript chính thức.">C. ESM chạy chậm hơn do không có bộ nhớ đệm (Cache)</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Tại sao các bundler (Webpack, Rollup, Vite) có thể thực hiện Tree-Shaking hiệu quả với ESM mà không thể với CommonJS ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Vì cú pháp import/export trong ESM là tĩnh (Static Structure), bundler có thể phân tích đồ thị phụ thuộc ngay tại thời điểm biên dịch mà không cần chạy code. CJS cho phép require động tại runtime (vd: if (cond) require('a')) nên không thể xác định tĩnh.">A. Vì ESM có cấu trúc tĩnh (Static Structure), có thể phân tích dependency graph ngay tại compile-time</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Tree-shaking liên quan đến cấu trúc phân tích tĩnh của cú pháp import/export.">B. Vì ESM tự động nén mã nguồn bằng Gzip</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Vì CommonJS không hỗ trợ hàm mũi tên</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 6: CHECKLIST & HOÀN TẤT MODULE 09 -->
+  <h2>6. Checklist tự kiểm chứng — Hoàn tất Module 09</h2>
+  <div class="checklist">
+    <div>&#9989; Hiểu rõ <strong>CJS Module Wrapper</strong> và cơ chế <code>require.cache</code> trong Node.js.</div>
+    <div>&#9989; Nắm vững 3 giai đoạn của ESM: <strong>Construction &rarr; Instantiation &rarr; Evaluation</strong>.</div>
+    <div>&#9989; Phân biệt sự khác nhau giữa <strong>Value Copy</strong> (CJS) và <strong>Live Bindings</strong> (ESM).</div>
+    <div>&#9989; Giải thích được nguyên nhân gây lỗi và cách giải quyết <strong>Circular Dependencies</strong> trong cả CJS và ESM.</div>
+    <div>&#9989; Hiểu bản chất <strong>Dynamic import()</strong> và cấu hình <code>package.json exports</code> chống Dual Package Hazard.</div>
+    <div>&#9989; Toàn bộ 36 test suites (223/223 unit tests) trong thư mục <code>practice</code> đã chạy XANH 100%.</div>
+  </div>
+
+  <!-- CHÚC MỪNG HOÀN THÀNH MODULE 09 -->
+  <div class="callout bridge">
+    <div class="ct">&#127881; Chúc mừng hoàn thành trọn vẹn Module 09 !</div>
+    <p>Bạn đã nắm trọn vẹn cơ chế nạp module hiện đại nhất trong thế giới JavaScript, sẵn sàng giải thích tự tin trong mọi vòng phỏng vấn Technical Lead/Senior Frontend.</p>
+    <p>Hãy tra cứu thêm trang <strong>Reference Guide Module 09</strong> trước khi bước vào <strong>Module 10: Tổng ôn &amp; Mock Interview thực chiến (50+ Bẫy JavaScript &amp; Live-Coding Senior)</strong> !</p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Tổng kết &amp; Tra cứu nhanh Module 09</div>
+    <div class="nt">Reference Guide · Module 09: Module Systems &amp; Modern Tooling</div>
+    <p class="nd">Bảng so sánh chi tiết CJS vs ESM, sơ đồ 3 giai đoạn ESM, bảng bẫy Circular Dependencies và hướng dẫn cấu hình ESM Dual Package.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0034-v8-garbage-collection-weakref.html">&#8592; Bài 34</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="../reference/09-module-systems.html">Cheatsheet Module 09 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Module Systems và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

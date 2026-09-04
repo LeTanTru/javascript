@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 09 · Module Systems &amp; Modern Tooling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 09 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 09 : Module Systems &amp; Modern Tooling Under The Hood</h1>
+  <p class="subtitle">Bản đồ tra cứu nhanh về kiến trúc nạp module trong JavaScript: CommonJS (Node.js) vs ECMAScript Modules (ESM), 3 giai đoạn của ESM, bẫy Circular Dependencies và Dual Package Hazard từ Bài 35.</p>
+  <p class="meta-line">&#9203; ~15 phút &middot; &#127919; Mục tiêu: Nắm trọn 4 chủ đề cốt lõi của Module Systems (CJS Module Wrapper, ESM 3-Phase Lifecycle, Live Bindings vs Value Copy, Circular Dependencies Resolution).</p>
+
+  <!-- TRỤC 1: MA TRẬN SO SÁNH CJS VS ESM -->
+  <h2>1. Ma trận so sánh toàn diện: CommonJS (CJS) vs ECMAScript Modules (ESM)</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Tiêu chí so sánh</th><th>CommonJS (CJS)</th><th>ECMAScript Modules (ESM)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Chuẩn hóa</strong></td>
+        <td>Cộng đồng Node.js (2009)</td>
+        <td>Chuẩn chính thức ECMA-262 (ES2015+)</td>
+      </tr>
+      <tr>
+        <td><strong>Thời điểm nạp (Loading)</strong></td>
+        <td><strong>Runtime &amp; Synchronous</strong> (Chặn luồng khi nạp file)</td>
+        <td><strong>Asynchronous &amp; Static 3-Phase</strong> (Construction, Instantiation, Evaluation)</td>
+      </tr>
+      <tr>
+        <td><strong>Cơ chế Binding</strong></td>
+        <td><strong>Value Copy</strong> (Sao chép giá trị tại thời điểm export)</td>
+        <td><strong>Live Bindings</strong> (Trỏ trực tiếp vào Module Environment Record)</td>
+      </tr>
+      <tr>
+        <td><strong>Tree-Shaking</strong></td>
+        <td>Rất khó hoặc không thể (do cấu trúc động runtime)</td>
+        <td><strong>Tối ưu hoàn hảo</strong> (phân tích tĩnh tại compile-time)</td>
+      </tr>
+      <tr>
+        <td><strong>Top-level <code>await</code></strong></td>
+        <td>Không hỗ trợ trực tiếp (phải bọc trong async IIFE)</td>
+        <td><strong>Hỗ trợ chuẩn</strong> (ES2022+), tạm dừng module graph con</td>
+      </tr>
+      <tr>
+        <td><strong>Phạm vi biến (Scope)</strong></td>
+        <td>Bọc trong Module Wrapper IIFE (có <code>__dirname</code>, <code>__filename</code>)</td>
+        <td>Module Scope riêng biệt (dùng <code>import.meta.url</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Circular Dependencies</strong></td>
+        <td>Trả về <strong>Partial Exports</strong> (dễ bị <code>undefined</code>)</td>
+        <td>Wire-up trước; hàm chạy an toàn, biến rơi vào <strong>TDZ</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: BẢN ĐỒ TƯ DUY KIẾN TRÚC -->
+  <h2>2. 4 Trụ cột kiến thức Module Systems chuẩn Senior</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <h3>1. CJS Module Wrapper &amp; Cache</h3>
+      <p>Node.js bọc code trong hàm:</p>
+      <code>(function (exports, require, module, __filename, __dirname) { ... })</code>
+      <p style="margin-top: 8px;">Kết quả trả về được lưu vào <code>require.cache</code>. Các lần nạp sau chỉ trả về cache.</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>2. ESM 3-Phase Lifecycle</h3>
+      <ol style="margin-bottom: 0; padding-left: 18px;">
+        <li><strong>Construction:</strong> Tải và Parse thành Module Records (Static Analysis).</li>
+        <li><strong>Instantiation:</strong> Cấp phát vùng nhớ &amp; tạo Live Bindings.</li>
+        <li><strong>Evaluation:</strong> Chạy mã từ lá lên gốc (Top-level await).</li>
+      </ol>
+    </div>
+
+    <div class="cs-card">
+      <h3>3. Bẫy Circular Dependencies</h3>
+      <p><strong>CJS:</strong> Module nhận partial exports chưa gán &rarr; crash do <code>undefined</code>.<br>
+      <strong>ESM:</strong> Hàm (hoisted) gọi an toàn; biến <code>const/let</code> bị lỗi TDZ (<code>ReferenceError</code>).</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>4. Dual Package Hazard</h3>
+      <p>Xuất bản 2 bản build (CJS + ESM) khiến singleton bị nhân đôi.<br>
+      <strong>Giải pháp:</strong> Dùng conditional exports trong <code>package.json</code> và cờ <code>__esModule</code> interop.</p>
+    </div>
+  </div>
+
+  <!-- CHECKLIST TỔNG KẾT MODULE 09 -->
+  <h2>3. Checklist năng lực chuẩn phỏng vấn — Module 09</h2>
+  <div class="checklist">
+    <div>&#9989; Phân tích được sự khác biệt giữa <strong>Static Analysis (ESM)</strong> và <strong>Dynamic Loading (CJS)</strong>.</div>
+    <div>&#9989; Giải thích tại sao ESM hỗ trợ <strong>Tree-shaking</strong> còn CJS thì không.</div>
+    <div>&#9989; Tường thuật chi tiết cơ chế <strong>Live Bindings</strong> và vẽ sơ đồ phân bổ bộ nhớ.</div>
+    <div>&#9989; Khắc phục lỗi <strong>Circular Dependencies</strong> và cấu hình thư viện npm chống <strong>Dual Package Hazard</strong>.</div>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0035-esm-vs-cjs.html">&#8592; Quay lại Bài 35</a>
+    <a href="../lessons/index.html">&#127968; Mục lục</a>
+    <a href="../lessons/index.html">Tiến vào Module 10 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh.</strong> Sử dụng trang này để ôn tập nhanh trước mọi buổi phỏng vấn Technical Lead / Senior Frontend Architect !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

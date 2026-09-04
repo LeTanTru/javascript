@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 11 · Prototypal Inheritance vs ES6 Classes, super &amp; Private Fields (#field)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 03 · Bài 11</span>
+  <h1>Bài 11 · Prototypal Inheritance vs ES6 Classes, <code>super</code> &amp; Private Fields (<code>#field</code>)</h1>
+  <p class="subtitle">Giải phẫu bản chất Syntactic Sugar của ES6 Classes, lý giải tại sao bắt buộc phải gọi super() trước khi dùng this trong Subclass, và cơ chế bảo mật cấp ngôn ngữ của Private Fields (#field).</p>
+  <p class="meta-line">&#9203; ~18 phút &middot; &#127919; Mục tiêu: Nắm vững mô hình kế thừa kép trong ES6 Class (Instance Chain + Static Chain), hiểu sâu cơ chế cấp phát this của Subclass và phân biệt các phương pháp đóng gói Private State.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 10 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 10</div>
+    <p>Ở Bài 10, chúng ta đã mổ xẻ 4 bước của toán tử <code>new</code> và cách <code>Object.create()</code> liên kết các prototype object. Trong lịch sử JavaScript (trước ES6), để thực hiện kế thừa giữa hai hàm constructor, lập trình viên phải sử dụng mô hình phức tạp mang tên <em>Parasitic Combination Inheritance</em>.</p>
+    <p>ES6 mang đến cú pháp <code>class</code>, <code>extends</code> và <code>super</code> khiến JavaScript trông giống hệt Java hay C++. Nhưng liệu đây có phải là Classical Inheritance thật sự không ? Bản chất của từ khóa <code>super</code> dưới góc nhìn ECMAScript là gì ?</p>
+  </div>
+
+  <!-- PHẦN 1 -->
+  <h2>1. ES6 Class có thực sự là một mô hình OOP mới không ?</h2>
+  <p>Câu trả lời thẳng thắn : <strong>KHÔNG</strong>. ES6 Class bản chất 100% là <strong>Syntactic Sugar (Đường mật cú pháp)</strong> phủ lên trên nền tảng Prototypal Inheritance và Prototype Chain sẵn có của JavaScript.</p>
+
+  <p>Tuy nhiên, Class không chỉ là cú pháp viết tắt; Engine áp dụng một số <strong>quy tắc bảo vệ nghiêm ngặt</strong> mà hàm thông thường không có :</p>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Tiêu chí so sánh</th>
+        <th>Function Constructor (ES5)</th>
+        <th>ES6 Class</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Gọi không có từ khóa <code>new</code></strong></td>
+        <td>Được phép (nhưng làm ô nhiễm <code>window</code> trong non-strict mode)</td>
+        <td><strong>BỊ CẤM</strong> &rarr; Ném <code>TypeError: Class constructor cannot be invoked without 'new'</code></td>
+      </tr>
+      <tr>
+        <td><strong>Chế độ Strict Mode</strong></td>
+        <td>Phải khai báo <code>"use strict"</code> thủ công</td>
+        <td><strong>Tự động kích hoạt Strict Mode</strong> cho toàn bộ thân class</td>
+      </tr>
+      <tr>
+        <td><strong>Hành vi Hoisting</strong></td>
+        <td>Hoisted hoàn toàn (Function Declaration)</td>
+        <td>Hoisted nhưng <strong>DÍNH TDZ</strong> (y hệt <code>let</code> và <code>const</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Khả năng duyệt phương thức (Enumerable)</strong></td>
+        <td>Mặc định là <code>enumerable: true</code> (xuất hiện trong <code>for...in</code>)</td>
+        <td>Các method trong class mặc định là <strong><code>enumerable: false</code></strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 2 -->
+  <h2>2. Cơ chế Subclassing: Tại sao bắt buộc phải gọi <code>super()</code> trước <code>this</code> ?</h2>
+  <p>Đây là câu hỏi phỏng vấn Senior Frontend xuất hiện với tần suất cực cao :</p>
+
+  <div class="callout danger">
+    <div class="ct">&#9888; Sự đảo ngược thứ tự cấp phát 'this' giữa ES5 và ES6</div>
+    <p><strong>Trong kế thừa ES5 (Subclass tạo <code>this</code> trước) :</strong></p>
+    <ul>
+      <li>Hàm <code>Child</code> được gọi &rarr; Toán tử <code>new</code> tạo ra một object rỗng mới làm <code>this</code> của <code>Child</code>.</li>
+      <li>Sau đó <code>Child</code> gọi <code>Parent.call(this, ...)</code> để mượn cha gán thêm thuộc tính vào <code>this</code> đã có sẵn đó.</li>
+    </ul>
+    <p><strong>Trong kế thừa ES6 (Base Class tạo <code>this</code> trước) :</strong></p>
+    <ul>
+      <li>Khi khởi tạo một Subclass (class có <code>extends</code>), JavaScript Engine <strong>KHÔNG cấp phát vùng nhớ <code>this</code></strong> cho Subclass ban đầu ! Lúc này <code>this</code> đang ở trạng thái <em>Uninitialized</em>.</li>
+      <li>Hàm <strong><code>super(...args)</code></strong> chịu trách nhiệm kích hoạt Constructor của lớp cha (Base Class) để lớp cha tạo ra instance và cấp phát ô nhớ cho <code>this</code>.</li>
+      <li>Sau khi <code>super()</code> chạy xong, Engine mới gán tham chiếu <code>this</code> đó về cho Subclass.</li>
+      <li><strong>Hệ quả :</strong> Nếu bạn truy cập <code>this</code> trước khi gọi <code>super()</code>, Engine sẽ lập tức ném ngoại lệ <code>ReferenceError: Must call super constructor in derived class before accessing 'this'</code> !</li>
+    </ul>
+  </div>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Thí nghiệm Subclass Constructor</span>
+    <pre><code><span class="kw">class</span> <span class="fn">Parent</span> {
+  <span class="kw">constructor</span>(name) { <span class="kw">this</span>.name = name; }
+}
+
+<span class="kw">class</span> <span class="fn">Child</span> <span class="kw">extends</span> <span class="fn">Parent</span> {
+  <span class="kw">constructor</span>(name, role) {
+    <span class="cmt">// this.role = role; // &#8594; ReferenceError ! 'this' chưa được khởi tạo !</span>
+    <span class="kw">super</span>(name);         <span class="cmt">// &#8594; Khởi tạo 'this' từ Parent</span>
+    <span class="kw">this</span>.role = role;    <span class="cmt">// &#8594; Bây giờ mới được dùng 'this' an toàn</span>
+  }
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 3 -->
+  <h2>3. Kế thừa kép trong ES6 Class (Double Prototype Chain)</h2>
+  <p>Khi dùng <code>class Child extends Parent</code>, JavaScript Engine tự động thiết lập <strong>2 chuỗi prototype độc lập song song</strong> :</p>
+
+  <ol>
+    <li>
+      <strong>Instance Prototype Chain (Kế thừa phương thức thực thể) :</strong><br>
+      <code>Child.prototype.[[Prototype]] === Parent.prototype</code><br>
+      Giúp các đối tượng <code>childInstance</code> truy cập được các phương thức định nghĩa trong <code>Parent.prototype</code>.
+    </li>
+    <li>
+      <strong>Constructor Prototype Chain (Kế thừa phương thức tĩnh - Static Methods) :</strong><br>
+      <code>Child.[[Prototype]] === Parent</code><br>
+      Bản thân hàm <code>Child</code> kế thừa trực tiếp từ hàm <code>Parent</code>. Nhờ đó, bất kỳ phương thức tĩnh (<code>static method</code>) nào trên <code>Parent</code> đều có thể gọi trực tiếp từ <code>Child.myStaticMethod()</code> !
+    </li>
+  </ol>
+
+  <!-- PHẦN 4 -->
+  <h2>4. ES2022 Private Fields (<code>#field</code>): Bảo mật tuyệt đối cấp ngôn ngữ</h2>
+  <p>Trong lịch sử, lập trình viên thường dùng tiền tố <code>_name</code> (chỉ là quy ước cộng đồng, vẫn đọc được từ bên ngoài) hoặc dùng Closures (tốn bộ nhớ Context Object trên Heap). Từ ES2022, JavaScript chính thức chuẩn hóa <strong>Private Fields (<code>#field</code>)</strong> :</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; ES2022 Private Fields</span>
+    <pre><code><span class="kw">class</span> <span class="fn">BankAccount</span> {
+  #balance = <span class="num">0</span>; <span class="cmt">// Private field đích thực cấp ngôn ngữ</span>
+
+  <span class="kw">constructor</span>(initial) {
+    <span class="kw">this</span>.#balance = initial;
+  }
+
+  <span class="fn">deposit</span>(amount) {
+    <span class="kw">this</span>.#balance += amount;
+    <span class="kw">return this</span>.#balance;
+  }
+}
+
+<span class="kw">const</span> acc = <span class="kw">new</span> <span class="fn">BankAccount</span>(<span class="num">500</span>);
+acc.<span class="fn">deposit</span>(<span class="num">200</span>);
+
+<span class="cmt">// Thử truy cập bằng mọi cách:</span>
+console.<span class="fn">log</span>(acc.<span class="fn">#balance</span>);   <span class="cmt">// &#8594; SyntaxError ngay tại thời điểm biên dịch !</span>
+console.<span class="fn">log</span>(acc[<span class="str">"#balance"</span>]); <span class="cmt">// &#8594; undefined !</span>
+console.<span class="fn">log</span>(Object.<span class="fn">keys</span>(acc)); <span class="cmt">// &#8594; [] (Vô hình hoàn toàn trước reflection)</span></code></pre>
+  </div>
+
+  <div class="callout why">
+    <div class="ct">&#128161; Cơ chế V8 PrivateBrand / PrivateIdentifier</div>
+    <p>Private Fields <strong>không được lưu trữ như các property thông thường</strong> trên đối tượng trong Memory Heap. V8 sử dụng cơ chế gọi là <em>PrivateBrand</em>: kiểm tra xem đối tượng có mang con dấu thương hiệu của Class hay không tại bytecode level. Điều này giúp Private Fields đạt được tính <strong>Hard Private</strong> (Bảo mật tuyệt đối, không có bất kỳ API nào có thể hack vào đọc lén).</p>
+  </div>
+
+  <!-- PHẦN 5 -->
+  <h2>5. Góc phỏng vấn Senior Frontend</h2>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q1: Tại sao trong constructor của một Subclass trong ES6, chúng ta bắt buộc phải gọi super() trước khi chạm vào this ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"Trong đặc tả ES6, cơ chế cấp phát bộ nhớ của Subclass bị đảo ngược so với ES5: `this` không do Subclass khởi tạo mà do Base Class (lớp cha) khởi tạo thông qua lệnh `super()`. Trước khi `super()` hoàn thành, biến liên kết `this` trong Derived Constructor vẫn nằm trong trạng thái Uninitialized (tương tự TDZ). Mọi truy cập vào `this` trước thời điểm này sẽ ném `ReferenceError` để đảm bảo instance của cha được dựng hoàn chỉnh trước khi con mở rộng."</em></p>
+  </div>
+
+  <div class="callout tip">
+    <div class="ct">&#127891; Q2: Sự khác biệt giữa Class Fields thông thường (`x = 1`) và Methods khai báo trong class (`foo() {}`) về mặt vị trí lưu trữ bộ nhớ là gì ?</div>
+    <p><strong>Trả lời Top-Down chuẩn Senior :</strong></p>
+    <p><em>"`Class Fields` (ví dụ `x = 1` hoặc arrow functions `handleClick = () => {}`) được gán trực tiếp lên từng **Instance đối tượng** trong mỗi lần gọi `new`, nghĩa là mỗi instance đều tốn thêm ô nhớ riêng. Ngược lại, các method thông thường (`foo() {}`) được định nghĩa duy nhất một lần trên **`Class.prototype`** và được chia sẻ dùng chung cho tất cả các instances thông qua Prototype Chain, tối ưu hóa bộ nhớ vượt trội."</em></p>
+  </div>
+
+  <!-- PHẦN 6 -->
+  <h2>6. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Đoạn code sau ném ra ngoại lệ gì ?<br>
+    <code>class A {} class B extends A { constructor() { this.x = 1; super(); } } new B();</code></div>
+    <button class="opt" data-correct="false" data-explain="Sai! Không phải lỗi kiểu dữ liệu (TypeError).">A. TypeError</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Truy cập 'this.x' trước khi 'super()' được gọi sẽ ném ReferenceError: Must call super constructor in derived class before accessing 'this'.">B. ReferenceError</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Cú pháp hoàn toàn hợp lệ nhưng lỗi xảy ra tại runtime khi khởi tạo instance.">C. SyntaxError</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Trong ES6, mối quan hệ kế thừa tĩnh (Static Inheritance) giữa hai class A và B (B extends A) được thể hiện bằng liên kết nào ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Object.getPrototypeOf(B) === A. Nhờ liên kết prototype giữa hai hàm constructor, lớp B kế thừa trực tiếp mọi phương thức static của lớp A.">A. Object.getPrototypeOf(B) === A</button>
+    <button class="opt" data-correct="false" data-explain="Sai! B.prototype kế thừa từ A.prototype là chuỗi kế thừa cho các instance methods, không phải static methods.">B. Object.getPrototypeOf(B.prototype) === A</button>
+    <button class="opt" data-correct="false" data-explain="Sai! B là một constructor function, prototype của nó là Function.prototype nếu không có extends.">C. B.prototype === A</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>7. Checklist tự kiểm chứng trước khi sang bài mới</h2>
+  <div class="checklist">
+    <div>&#9989; Hiểu rõ ES6 Class là Syntactic Sugar và 4 quy tắc bảo vệ đặc biệt của Class.</div>
+    <div>&#9989; Giải thích được nguyên nhân sâu xa của lỗi <code>ReferenceError</code> khi dùng <code>this</code> trước <code>super()</code>.</div>
+    <div>&#9989; Nắm chắc mô hình kế thừa kép (Instance Prototype Chain và Static Prototype Chain).</div>
+    <div>&#9989; Làm chủ cú pháp và cơ chế bảo mật cấp ngôn ngữ của ES2022 Private Fields (<code>#field</code>).</div>
+    <div>&#9989; Toàn bộ 78 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- CÂU HỎI TƯ DUY -->
+  <div class="callout bridge">
+    <div class="ct">&#129300; Câu hỏi tư duy bắc cầu sang Bài 12 :</div>
+    <p>Chúng ta đã biết cách tạo đối tượng, che giấu thuộc tính với Private Fields và kế thừa qua Class. Nhưng nếu ta muốn **đánh chặn (intercept)** mọi hành vi đọc, ghi, xóa thuộc tính, hoặc thậm chí gọi hàm của một đối tượng để tự động kích hoạt cập nhật giao diện (Reactivity System) thì sao ?</p>
+    <p><em>"<strong>`Proxy`</strong> và <strong>`Reflect` API</strong> trong ES6 hoạt động như thế nào ? Tại sao <strong>Vue 3</strong> và các kiến trúc hiện đại (Signals) lại từ bỏ <code>Object.defineProperty</code> của Vue 2 để chuyển dịch toàn bộ sang `Proxy` ?"</em></p>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo (Hoàn tất Module 03)</div>
+    <div class="nt">Bài 12 · `Proxy` &amp; `Reflect` API: Meta-programming, Traps &amp; Cơ chế Reactivity (Vue 3 / Signals)</div>
+    <p class="nd">Đánh chặn 13 internal traps của JavaScript Engine, phân tích ưu thế vượt trội so với Object.defineProperty và tự tay code Reactivity Engine tối giản.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0010-new-operator-internals.html">&#8592; Bài 10</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để xem 5 bài test của Bài 11 và hỏi tôi bất cứ điều gì bạn muốn làm rõ !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

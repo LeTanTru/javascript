@@ -168,6 +168,19 @@ _Avoid_: Function builder, class instantiator
 Meta-property được bổ sung trong ES6 trỏ tới hàm constructor đã được kích hoạt trực tiếp thông qua toán tử `new`. Có giá trị là `undefined` nếu hàm được gọi theo cách thông thường; được dùng làm nền tảng cho Safe Constructor Pattern và kiểm soát tính kế thừa trong các lớp con.
 _Avoid_: Constructor detector, target property
 
+**Syntactic Sugar**:
+Cú pháp trong ngôn ngữ lập trình được thiết kế nhằm giúp mã nguồn dễ đọc, biểu cảm và thuận tiện hơn cho con người, nhưng không hề bổ sung thêm bất kỳ tính năng hoặc mô hình tính toán mới nào bên dưới runtime (ví dụ ES6 Class thực chất vận hành 100% dựa trên Prototype Chain).
+_Avoid_: New runtime feature, compiler magic
+
+**Private Fields (#field)**:
+Tính năng được chuẩn hóa trong ES2022 cho phép khai báo thuộc tính và phương thức hoàn toàn riêng tư bên trong class bằng tiền tố `#`. Được kiểm soát ở tầng bytecode của Engine (cơ chế PrivateBrand), ném SyntaxError nếu truy xuất trái phép từ bên ngoài và vô hình trước mọi kỹ thuật reflection.
+_Avoid_: Soft private, pseudo-private
+
+**Parasitic Combination Inheritance**:
+Mẫu kế thừa tối ưu nhất trong kỷ nguyên ES5: sử dụng `Parent.call(this)` để mượn constructor khởi tạo thuộc tính instance, kết hợp `Object.create(Parent.prototype)` để kế thừa phương thức mà không cần gọi constructor của cha lần thứ 2. Là nền tảng cơ sở mà ES6 `class...extends` mô phỏng lại.
+_Avoid_: Double constructor inheritance, classical clone
+
+
 
 
 

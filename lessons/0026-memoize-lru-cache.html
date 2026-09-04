@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 26 · Live-coding: Memoize function &amp; LRU Cache implementation bằng JavaScript</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 06 · Bài 26 (Functional Programming &amp; Utility Polyfills)</span>
+  <h1>Bài 26 · Live-coding: Memoize function &amp; LRU Cache implementation bằng JavaScript</h1>
+  <p class="subtitle">Hai kỹ thuật tối ưu hóa bộ nhớ đệm (Caching &amp; Performance) cốt lõi: Tự cài đặt hàm Memoize ghi nhớ kết quả cho Pure Functions và xây dựng cấu trúc dữ liệu LRU Cache đạt chuẩn độ phức tạp thời gian O(1) cho cả get và put.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Nắm vững nguyên lý Memoization, tự code hàm memoize hỗ trợ resolver tùy biến, và giải thuật LRU Cache (Least Recently Used) tận dụng tính chất Insertion-Order của JavaScript Map.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 25 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 25</div>
+    <p>Ở Bài 25, bạn đã kết hợp các hàm thành pipeline với <code>pipe</code> và <code>compose</code>. Trong các ứng dụng thực tế, nhiều bước tính toán trong pipeline có thể rất tốn kém (heavy computations, đệ quy Fibonacci, tính toán ma trận đồ họa). Để tránh lặp lại công việc vô ích, chúng ta sử dụng <strong>Memoization</strong> và <strong>LRU Cache</strong>.</p>
+  </div>
+
+  <!-- PHẦN 1: MEMOIZATION -->
+  <h2>1. Memoization là gì &amp; Điều kiện áp dụng</h2>
+  <p><strong>Memoization</strong> là kỹ thuật tối ưu hóa lưu lại (cache) kết quả trả về của các hàm dựa trên tập tham số đầu vào. Khi hàm được gọi lại với cùng tham số, kết quả được lấy ngay từ bộ nhớ đệm mà không cần tính toán lại.</p>
+
+  <div class="callout tip">
+    <div class="ct">&#9888; Chỉ Memoize Pure Functions !</div>
+    <p>Nếu bạn memoize một Impure Function (hàm phụ thuộc thời gian <code>Date.now()</code>, dữ liệu ngoài hoặc gọi HTTP ngẫu nhiên), các lần gọi sau sẽ trả về dữ liệu cũ đã bị stale (lỗi thời) mà không phản ánh đúng trạng thái mới của hệ thống.</p>
+  </div>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt memoize() chuẩn Lodash</span>
+    <pre><code><span class="kw">function</span> <span class="fn">memoize</span>(fn, resolver) {
+  <span class="kw">if</span> (<span class="kw">typeof</span> fn !== <span class="str">'function'</span>) <span class="kw">throw new</span> <span class="fn">TypeError</span>(<span class="str">'Expected a function'</span>);
+
+  <span class="kw">const</span> memoized = <span class="kw">function</span> (...args) {
+    <span class="cmt">// Tạo cache key từ resolver tùy biến hoặc JSON.stringify mặc định</span>
+    <span class="kw">const</span> key = <span class="kw">typeof</span> resolver === <span class="str">'function'</span> 
+      ? resolver.<span class="fn">apply</span>(<span class="kw">this</span>, args) 
+      : JSON.<span class="fn">stringify</span>(args);
+
+    <span class="kw">const</span> cache = memoized.cache;
+    <span class="kw">if</span> (cache.<span class="fn">has</span>(key)) {
+      <span class="kw">return</span> cache.<span class="fn">get</span>(key); <span class="cmt">// Trả về kết quả từ Cache</span>
+    }
+
+    <span class="kw">const</span> result = fn.<span class="fn">apply</span>(<span class="kw">this</span>, args);
+    cache.<span class="fn">set</span>(key, result);  <span class="cmt">// Lưu vào Cache</span>
+    <span class="kw">return</span> result;
+  };
+
+  memoized.cache = <span class="kw">new</span> <span class="fn">Map</span>(); <span class="cmt">// Expose cache để cho phép clear / delete</span>
+  <span class="kw">return</span> memoized;
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 2: LRU CACHE -->
+  <h2>2. LRU Cache (Least Recently Used) &amp; Độ phức tạp O(1)</h2>
+  <p>Nếu chỉ dùng <code>Map</code> để cache vô hạn, dung lượng RAM sẽ tăng mãi và gây tràn bộ nhớ (Memory Leak). <strong>LRU Cache</strong> giới hạn dung lượng tối đa <code>capacity</code>. Khi bộ đệm đầy, nó sẽ <em>loại bỏ phần tử ít được sử dụng nhất (Least Recently Used)</em>.</p>
+
+  <div class="callout tip">
+    <div class="ct">&#128161; Bí mật của JavaScript Map</div>
+    <p>Theo chuẩn ECMAScript, <code>Map</code> trong JavaScript <strong>luôn bảo toàn thứ tự chèn (Insertion Order)</strong>. Phương thức <code>map.keys().next().value</code> luôn lấy ra phần tử cũ nhất (đầu map). Bằng cách xóa key và chèn lại <code>map.delete(key); map.set(key, val)</code>, ta đưa phần tử đó xuống cuối map (thành Most Recently Used) với chi phí $O(1)$ mà không cần tự cài đặt Doubly Linked List !</p>
+  </div>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Cài đặt LRUCache O(1)</span>
+    <pre><code><span class="kw">class</span> <span class="fn">LRUCache</span> {
+  <span class="fn">constructor</span>(capacity) {
+    <span class="kw">if</span> (capacity <= <span class="num">0</span>) <span class="kw">throw new</span> <span class="fn">Error</span>(<span class="str">'Capacity must be positive'</span>);
+    <span class="kw">this</span>.capacity = capacity;
+    <span class="kw">this</span>.cache = <span class="kw">new</span> <span class="fn">Map</span>();
+  }
+
+  <span class="cmt">// Lấy giá trị & refresh vị trí lên Most Recently Used</span>
+  <span class="fn">get</span>(key) {
+    <span class="kw">if</span> (!<span class="kw">this</span>.cache.<span class="fn">has</span>(key)) <span class="kw">return undefined</span>;
+    <span class="kw">const</span> value = <span class="kw">this</span>.cache.<span class="fn">get</span>(key);
+    <span class="kw">this</span>.cache.<span class="fn">delete</span>(key);
+    <span class="kw">this</span>.cache.<span class="fn">set</span>(key, value); <span class="cmt">// Đưa xuống cuối</span>
+    <span class="kw">return</span> value;
+  }
+
+  <span class="cmt">// Thêm/cập nhật giá trị & loại bỏ phần tử cũ nhất nếu vượt dung lượng</span>
+  <span class="fn">put</span>(key, value) {
+    <span class="kw">if</span> (<span class="kw">this</span>.cache.<span class="fn">has</span>(key)) {
+      <span class="kw">this</span>.cache.<span class="fn">delete</span>(key);
+    } <span class="kw">else if</span> (<span class="kw">this</span>.cache.size >= <span class="kw">this</span>.capacity) {
+      <span class="cmt">// Xóa phần tử đầu tiên (cũ nhất / ít dùng nhất)</span>
+      <span class="kw">const</span> oldestKey = <span class="kw">this</span>.cache.<span class="fn">keys</span>().<span class="fn">next</span>().value;
+      <span class="kw">this</span>.cache.<span class="fn">delete</span>(oldestKey);
+    }
+    <span class="kw">this</span>.cache.<span class="fn">set</span>(key, value);
+  }
+
+  <span class="fn">clear</span>() {
+    <span class="kw">this</span>.cache.<span class="fn">clear</span>();
+  }
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 3: SO SÁNH MEMOIZE VS LRU -->
+  <h2>3. So sánh Memoize vs LRU Cache</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Tiêu chí</th><th>Memoize (Function Cache)</th><th>LRU Cache (Data Structure)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Mục đích</strong></td>
+        <td>Gắn trực tiếp vào hàm để nhớ kết quả theo đối số</td>
+        <td>Cấu trúc lưu trữ Key-Value có chính sách đào thải kích thước cố định</td>
+      </tr>
+      <tr>
+        <td><strong>Giới hạn dung lượng</strong></td>
+        <td>Mặc định không giới hạn (cần lưu ý kích thước)</td>
+        <td>Cố định bởi <code>capacity</code> (tự động loại bỏ LRU)</td>
+      </tr>
+      <tr>
+        <td><strong>Tương đương trong React</strong></td>
+        <td><code>React.memo</code>, <code>useMemo</code>, <code>useCallback</code></td>
+        <td>Cache tầng Client (Apollo Client, TanStack Query Cache)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 4: QUIZZES -->
+  <h2>4. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Bạn có một LRUCache với capacity = 2. Thực hiện các thao tác: put('a', 1), put('b', 2), get('a'), put('c', 3). Phần tử nào sẽ bị loại bỏ (evicted) khỏi cache ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Sau get('a'), 'a' đã được refresh thành Most Recently Used, do đó 'b' trở thành Least Recently Used. Khi chèn 'c', 'b' sẽ bị đào thải.">A. 'b'</button>
+    <button class="opt" data-correct="false" data-explain="Sai! 'a' vừa được get() nên đã trở thành phần tử mới nhất.">B. 'a'</button>
+    <button class="opt" data-correct="false" data-explain="Sai! 'c' vừa được chèn vào.">C. 'c'</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Tại sao mặc định hàm <code>memoize</code> dùng <code>JSON.stringify(args)</code> có thể gặp vấn đề khi đối số là Object có cùng nội dung nhưng khác thứ tự thuộc tính ?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! JSON.stringify({ a: 1, b: 2 }) cho ra '{\"a\":1,\"b\":2}', trong khi JSON.stringify({ b: 2, a: 1 }) cho ra '{\"b\":2,\"a\":1}'. Cache key khác nhau dẫn đến tính toán lại không cần thiết. Vì vậy cần cung cấp custom resolver.">A. Vì JSON.stringify phụ thuộc thứ tự các keys ({a:1, b:2} khác {b:2, a:1}) dẫn đến lệch cache key</button>
+    <button class="opt" data-correct="false" data-explain="Sai! JSON.stringify xử lý string hoàn toàn hợp lệ.">B. Vì JSON.stringify không hỗ trợ chuỗi tiếng Việt</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. Vì Map không hỗ trợ string key</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 5: CHECKLIST -->
+  <h2>5. Checklist tự kiểm chứng — Bài 26</h2>
+  <div class="checklist">
+    <div>&#9989; Tự tay code hàm <code>memoize</code> hỗ trợ custom resolver và quản lý <code>memoized.cache</code>.</div>
+    <div>&#9989; Hiểu rõ vì sao chỉ được memoize các Pure Functions.</div>
+    <div>&#9989; Cài đặt cấu trúc dữ liệu <code>LRUCache</code> đạt độ phức tạp $O(1)$ cho cả <code>get</code> và <code>put</code>.</div>
+    <div>&#9989; Giải thích được cơ chế bảo toàn Insertion Order của JavaScript <code>Map</code>.</div>
+    <div>&#9989; Toàn bộ 27 test suites (169/169 unit tests) trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo trong Module 06 (Bài cuối Module)</div>
+    <div class="nt">Bài 27 · Live-coding: <code>flatten</code> (Array/Object lồng nhau) &amp; <code>deepEqual</code> implementation</div>
+    <p class="nd">Bộ đôi bài tập live-coding đánh giá kỹ năng xử lý cấu trúc cây đệ quy nâng cao và so sánh cấu trúc dữ liệu toàn diện.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0025-event-emitter-compose.html">&#8592; Bài 25</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0027-flatten-deep-equal.html">Bài 27 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 6 bài test Memoize &amp; LRU Cache và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

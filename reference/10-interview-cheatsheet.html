@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tổng hợp Module 10 · Tổng ôn &amp; Mock Interview thực chiến</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lessons/lesson.css">
+<style>
+  .cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 16px; margin: 20px 0; }
+  .cs-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .cs-card h3 { margin-top: 0; font-size: 1.15rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  @media print {
+    .home-fab, .navbar, .try-it { display: none !important; }
+    body { background: #fff !important; color: #000 !important; }
+    .cs-card { border-color: #ccc !important; background: #fff !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">&#128209; Tổng kết Module 10 · Cheat-Sheet Tra Cứu Nhanh</span>
+  <h1>Tổng hợp kiến thức Module 10 : Tổng ôn &amp; Mock Interview thực chiến</h1>
+  <p class="subtitle">Bản đồ tư duy toàn diện về các bẫy JavaScript kinh điển, 3 bài toán Live-Coding phân loại Senior/Lead và phương pháp trả lời Top-Down &amp; STAR từ Bài 36 đến Bài 38.</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Trang bị bộ khung tư duy phản biện, kỹ năng live-coding và phong thái tự tin làm chủ mọi vòng phỏng vấn kỹ thuật Senior/Lead.</p>
+
+  <!-- TRỤC 1: MA TRẬN 8 BẪY CODE OUTPUT -->
+  <h2>1. Bảng tra cứu 8 Bẫy Code Output kinh điển trong phỏng vấn</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Chủ đề bẫy</th><th>Cạm bẫy thường gặp</th><th>Bản chất theo chuẩn ECMA-262</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Function Hoisting in Blocks</strong></td>
+        <td><code>var a = 1; function test() { a = 10; return; function a() {} }</code></td>
+        <td>Hàm <code>function a() {}</code> hoist lên đầu scope hàm <code>test</code> tạo local variable <code>a</code>. Phép gán không ảnh hưởng global <code>a</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Sparse Array Holes</strong></td>
+        <td><code>[1, , 3].map(x =&gt; x * 2)</code></td>
+        <td>Các phương thức lặp (<code>map</code>, <code>forEach</code>, <code>filter</code>) tự động bỏ qua empty holes; <code>2 in arr</code> trả về <code>false</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>3. Object Property Keys Order</strong></td>
+        <td>Thứ tự in ra của <code>Object.keys({ '2': 'b', '1': 'a', 'z': 'c' })</code></td>
+        <td>Duyệt theo thứ tự: Số nguyên dương tăng dần (<code>"1", "2"</code>) &rarr; Chuỗi ký tự theo thứ tự chèn &rarr; Symbols.</td>
+      </tr>
+      <tr>
+        <td><strong>4. Symbol.toPrimitive Priority</strong></td>
+        <td>Object ép kiểu ngầm định khi <code>+</code>, <code>==</code>, <code>${}</code></td>
+        <td>Thứ tự ưu tiên: <code>Symbol.toPrimitive(hint)</code> &gt; <code>valueOf()</code> &gt; <code>toString()</code>.</td>
+      </tr>
+      <tr>
+        <td><strong>5. Constructor Return Override</strong></td>
+        <td><code>function Foo() { return { custom: true }; }</code></td>
+        <td>Nếu constructor return <code>Object</code>, <code>new Foo()</code> trả về object đó và phá vỡ <code>instanceof Foo</code>. Nếu return <code>Primitive</code> thì bị bỏ qua.</td>
+      </tr>
+      <tr>
+        <td><strong>6. Proxy Invariant Protection</strong></td>
+        <td>Proxy cố tình trả về giá trị khác cho non-writable &amp; non-configurable property</td>
+        <td>JavaScript runtime tự động ném <code>TypeError</code> để bảo vệ tính toàn vẹn bộ nhớ (Invariant violation).</td>
+      </tr>
+      <tr>
+        <td><strong>7. Microtask Starvation</strong></td>
+        <td>Đệ quy <code>Promise.resolve().then(recurse)</code></td>
+        <td>Microtask queue không bao giờ cạn, chiếm trọn Call Stack và làm đói (starve) Macrotask timers &amp; UI render.</td>
+      </tr>
+      <tr>
+        <td><strong>8. Class Private Fields (#)</strong></td>
+        <td>Cố gắng truy xuất <code>obj.#privateProp</code> từ bên ngoài hoặc qua <code>Object.keys</code></td>
+        <td>Hard Privacy: Không thể truy xuất qua bất kỳ reflection API nào (kể cả <code>getOwnPropertySymbols</code>).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- TRỤC 2: 3 BÀI TOÁN LIVE-CODING SENIOR -->
+  <h2>2. 3 Bài toán Live-Coding phân loại Senior / Lead</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <h3>1. Priority Async Scheduler</h3>
+      <p>Quản lý hàng đợi async tasks với giới hạn <code>concurrency</code> và sắp xếp ưu tiên theo <code>priority</code> giảm dần. Giải phóng slot an toàn bằng <code>try/finally</code>.</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>2. Deep Object Diff &amp; Patch</h3>
+      <p>Thuật toán so sánh đệ quy phát hiện biến động cấu trúc <code>{ added, updated, deleted }</code> và hàm <code>applyPatch</code> khôi phục state bất biến.</p>
+    </div>
+
+    <div class="cs-card">
+      <h3>3. Fine-Grained Reactive Signal</h3>
+      <p>Tự động thu thập dependencies trong <code>read()</code> qua <code>activeEffect</code> và thông báo lại toàn bộ <code>subscribers</code> (Set) trong <code>write()</code>.</p>
+    </div>
+  </div>
+
+  <!-- TRỤC 3: PHƯƠNG PHÁP GIAO TIẾP STAR & TOP-DOWN -->
+  <h2>3. Khung giao tiếp phỏng vấn Top-Down &amp; STAR</h2>
+  <div class="cs-grid">
+    <div class="cs-card">
+      <h3>Top-Down (Conclusion First)</h3>
+      <ol style="margin-bottom: 0; padding-left: 18px;">
+        <li><strong>TL;DR Upfront:</strong> Kết luận chính trong 1 câu.</li>
+        <li><strong>3 Pillars:</strong> 3 luận điểm cốt lõi (Hiệu năng, Bộ nhớ, Tính duy trì).</li>
+        <li><strong>Deep Dive:</strong> Phân tích chi tiết khi được hỏi.</li>
+      </ol>
+    </div>
+
+    <div class="cs-card">
+      <h3>Mô hình STAR có số liệu</h3>
+      <ul style="margin-bottom: 0; padding-left: 18px;">
+        <li><strong>S - Situation:</strong> Bối cảnh sự cố cụ thể.</li>
+        <li><strong>T - Task:</strong> Nhiệm vụ và mục tiêu cần đạt.</li>
+        <li><strong>A - Action:</strong> Hành động kỹ thuật chính xác.</li>
+        <li><strong>R - Result:</strong> Kết quả đo lường (% RAM, ms FCP).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>4. Checklist hoàn tất Module 10</h2>
+  <div class="checklist">
+    <div>&#9989; Đạt phản xạ 100% chính xác trước mọi câu hỏi bẫy Code Output.</div>
+    <div>&#9989; Thuộc lòng cấu trúc triển khai 3 bài toán Senior Live-Coding trong 15-20 phút.</div>
+    <div>&#9989; Tự tin áp dụng Top-Down và STAR trong mọi câu hỏi kiến trúc và sự cố thực tế.</div>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="../lessons/0038-technical-interview-communication.html">&#8592; Quay lại Bài 38</a>
+    <a href="../lessons/index.html">&#127968; Mục lục</a>
+    <a href="../lessons/0039-react-foundations-es6.html">Tiến vào Module 11 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tài liệu tra cứu nhanh.</strong> Sử dụng trang này để tổng ôn phản xạ trước các vòng phỏng vấn Technical Interview tại Meta, Google, Uber và các kỳ thi tuyển Senior Architect !</p>
+
+</div>
+<script src="../lessons/lesson-enhance.js"></script>
+</body>
+</html>

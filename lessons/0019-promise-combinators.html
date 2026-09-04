@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 19 · Live-coding Polyfills: Promise.all, allSettled, race, any &amp; Promise.withResolvers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 05 · Bài 19</span>
+  <h1>Bài 19 · Live-coding Polyfills: <code>Promise.all</code>, <code>allSettled</code>, <code>race</code>, <code>any</code> &amp; <code>Promise.withResolvers</code></h1>
+  <p class="subtitle">Cài đặt tay 5 Promise Combinators thiết yếu từ gốc rễ, xử lý edge cases, nắm vững kỹ thuật Reference Counter và giải thích sự khác biệt chiến lược giữa các combinators trong phỏng vấn Senior.</p>
+  <p class="meta-line">&#9203; ~22 phút &middot; &#127919; Mục tiêu: Tự tin live-coding 5 polyfills trong phòng phỏng vấn, chọn đúng combinator phù hợp với yêu cầu bài toán và hiểu sâu kỹ thuật Deferred Pattern qua <code>Promise.withResolvers</code>.</p>
+
+  <!-- BẮC CẦU TỪ BÀI 18 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối từ Bài 18</div>
+    <p>Ở Bài 18, chúng ta đã hiểu sâu cấu trúc nội tại của một Promise đơn lẻ và tự cài đặt được <code>TinyPromise</code>. Thực tế production code luôn đòi hỏi <strong>điều phối nhiều Promise song song</strong> &mdash; chờ tất cả hoàn thành, lấy kết quả nhanh nhất, hay thu gom mọi kết quả dù thành công hay thất bại.</p>
+    <p>Bài học này sẽ trang bị cho bạn 5 combinators của ECMAScript 2020–2024, từ lý thuyết cho đến self-coding polyfill hoàn chỉnh.</p>
+  </div>
+
+  <!-- PHẦN 1: MA TRẬN SO SÁNH -->
+  <h2>1. Ma trận so sánh 5 Promise Combinators</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Combinator</th>
+          <th>Resolve khi</th>
+          <th>Reject khi</th>
+          <th>Giá trị resolve</th>
+          <th>ES Năm</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>Promise.all()</code></td>
+          <td>TẤT CẢ fulfilled</td>
+          <td>BẤT KỲ 1 rejected</td>
+          <td>Mảng kết quả <strong>theo đúng thứ tự chỉ số</strong></td>
+          <td>ES2015</td>
+        </tr>
+        <tr>
+          <td><code>Promise.allSettled()</code></td>
+          <td>TẤT CẢ đều settled (kể cả rejected)</td>
+          <td><em>Không bao giờ reject !</em></td>
+          <td>Mảng <code>{ status, value/reason }</code></td>
+          <td>ES2020</td>
+        </tr>
+        <tr>
+          <td><code>Promise.race()</code></td>
+          <td>Promise ĐẦU TIÊN settle (fulfilled hoặc rejected)</td>
+          <td>Promise ĐẦU TIÊN settle là rejected</td>
+          <td>Giá trị của Promise settle đầu tiên</td>
+          <td>ES2015</td>
+        </tr>
+        <tr>
+          <td><code>Promise.any()</code></td>
+          <td>BẤT KỲ 1 fulfilled</td>
+          <td>TẤT CẢ bị rejected</td>
+          <td>Giá trị của Promise fulfilled đầu tiên</td>
+          <td>ES2021</td>
+        </tr>
+        <tr>
+          <td><code>Promise.withResolvers()</code></td>
+          <td colspan="3">Trả về <code>{ promise, resolve, reject }</code> — Tách biệt điều khiển ra ngoài Promise constructor (Deferred Pattern)</td>
+          <td>ES2024</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PHẦN 2: POLYFILL ALL -->
+  <h2>2. Polyfill <code>myAll</code>: Kỹ thuật Reference Counter</h2>
+  <p>Thử thách lớn nhất của <code>Promise.all</code> là : làm thế nào để biết khi <em>tất cả</em> đã hoàn thành mà <strong>không cần chặn luồng</strong> ? Giải pháp : <strong>Reference Counter</strong> &mdash; một biến đếm ngược từ N về 0.</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Polyfill Promise.all chuẩn phỏng vấn</span>
+    <pre><code><span class="kw">function</span> <span class="fn">myAll</span>(promises) {
+  <span class="kw">return new</span> Promise((resolve, reject) => {
+    <span class="kw">if</span> (!Array.<span class="fn">isArray</span>(promises) || promises.length === <span class="num">0</span>) <span class="kw">return</span> <span class="fn">resolve</span>([]);
+
+    <span class="kw">const</span> results = <span class="kw">new</span> Array(promises.length);
+    <span class="kw">let</span> remaining = promises.length; <span class="cmt">// Reference Counter</span>
+
+    promises.<span class="fn">forEach</span>((p, i) => {
+      Promise.<span class="fn">resolve</span>(p).<span class="fn">then</span>((value) => {
+        results[i] = value;       <span class="cmt">// Giữ nguyên thứ tự theo index</span>
+        <span class="kw">if</span> (--remaining === <span class="num">0</span>) <span class="fn">resolve</span>(results); <span class="cmt">// Tất cả đã xong</span>
+      }, reject); <span class="cmt">// Bất kỳ 1 reject → reject toàn bộ</span>
+    });
+  });
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 3: POLYFILL ALL SETTLED -->
+  <h2>3. Polyfill <code>myAllSettled</code>: Thu gom mọi kết quả</h2>
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Polyfill Promise.allSettled</span>
+    <pre><code><span class="kw">function</span> <span class="fn">myAllSettled</span>(promises) {
+  <span class="kw">if</span> (!Array.<span class="fn">isArray</span>(promises) || promises.length === <span class="num">0</span>) <span class="kw">return</span> Promise.<span class="fn">resolve</span>([]);
+
+  <span class="kw">return new</span> Promise((resolve) => {
+    <span class="kw">const</span> results = <span class="kw">new</span> Array(promises.length);
+    <span class="kw">let</span> remaining = promises.length;
+
+    promises.<span class="fn">forEach</span>((p, i) => {
+      Promise.<span class="fn">resolve</span>(p).<span class="fn">then</span>(
+        (value)  => { results[i] = { status: <span class="str">'fulfilled'</span>, value };  <span class="kw">if</span> (--remaining === <span class="num">0</span>) <span class="fn">resolve</span>(results); },
+        (reason) => { results[i] = { status: <span class="str">'rejected'</span>,  reason }; <span class="kw">if</span> (--remaining === <span class="num">0</span>) <span class="fn">resolve</span>(results); }
+        <span class="cmt">// Không bao giờ gọi reject → allSettled chưa bao giờ reject</span>
+      );
+    });
+  });
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 4: RACE, ANY, WITHRESOLVERS -->
+  <h2>4. Polyfill <code>myRace</code>, <code>myAny</code> &amp; <code>myWithResolvers</code></h2>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; race, any, withResolvers</span>
+    <pre><code><span class="cmt">// Promise.race: Đua tranh — settle đầu tiên thắng</span>
+<span class="kw">function</span> <span class="fn">myRace</span>(promises) {
+  <span class="kw">return new</span> Promise((resolve, reject) => {
+    promises.<span class="fn">forEach</span>((p) => Promise.<span class="fn">resolve</span>(p).<span class="fn">then</span>(resolve, reject));
+  });
+}
+
+<span class="cmt">// Promise.any: Lạc quan — chỉ reject nếu TẤT CẢ thất bại</span>
+<span class="kw">function</span> <span class="fn">myAny</span>(promises) {
+  <span class="kw">return new</span> Promise((resolve, reject) => {
+    <span class="kw">if</span> (!promises.length) <span class="kw">return</span> <span class="fn">reject</span>(<span class="kw">new</span> AggregateError([], <span class="str">'All promises were rejected'</span>));
+
+    <span class="kw">const</span> errors = <span class="kw">new</span> Array(promises.length);
+    <span class="kw">let</span> rejectedCount = <span class="num">0</span>; <span class="cmt">// Reference Counter cho trường hợp ngược</span>
+
+    promises.<span class="fn">forEach</span>((p, i) =>
+      Promise.<span class="fn">resolve</span>(p).<span class="fn">then</span>(resolve, (reason) => {
+        errors[i] = reason;
+        <span class="kw">if</span> (++rejectedCount === promises.length)
+          <span class="fn">reject</span>(<span class="kw">new</span> AggregateError(errors, <span class="str">'All promises were rejected'</span>));
+      })
+    );
+  });
+}
+
+<span class="cmt">// Promise.withResolvers: Deferred Pattern — ES2024</span>
+<span class="kw">function</span> <span class="fn">myWithResolvers</span>() {
+  <span class="kw">let</span> resolve, reject;
+  <span class="kw">const</span> promise = <span class="kw">new</span> Promise((res, rej) => {
+    resolve = res;  <span class="cmt">// Lưu reference ra ngoài Closure</span>
+    reject  = rej;
+  });
+  <span class="kw">return</span> { promise, resolve, reject };
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Bạn gọi Promise.all([p1, p2, p3]). p1 và p3 fulfilled sau 1s, nhưng p2 bị rejected ngay lập tức. Kết quả là gì ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! Promise.all không chờ các promise còn lại; ngay khi có 1 rejection, nó reject ngay.">A. Chờ đến khi p1 và p3 hoàn thành rồi mới reject</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! Promise.all reject ngay lập tức khi bất kỳ Promise nào bị rejected, bỏ qua các kết quả còn lại của p1 và p3 (dù chúng đang tiến hành bình thường).">B. Reject ngay với lý do từ p2 mà không chờ p1, p3</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Chỉ Promise.allSettled mới thu gom kết quả hỗn hợp.">C. Resolve với mảng [result_p1, error_p2, result_p3]</button>
+    <div class="feedback"></div>
+  </div>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 2. Khi nào bạn chọn <code>Promise.allSettled</code> thay vì <code>Promise.all</code> ?</div>
+    <button class="opt" data-correct="false" data-explain="Sai! allSettled không nhanh hơn all về mặt tốc độ thực thi.">A. Khi cần kết quả nhanh hơn vì allSettled chạy song song hiệu quả hơn</button>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! allSettled phù hợp khi bạn cần xử lý kết quả của MỌI request dù thành công hay thất bại, ví dụ: batch processing, report generation, hay khi cần biết request nào bị lỗi mà không muốn dừng toàn bộ.">B. Khi cần biết kết quả của TẤT CẢ requests, kể cả những cái thất bại, không muốn dừng sớm</button>
+    <button class="opt" data-correct="false" data-explain="Sai! allSettled không tự động retry các request thất bại.">C. Khi muốn tự động retry các Promise bị reject</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng trước khi sang Bài 20</h2>
+  <div class="checklist">
+    <div>&#9989; Phân biệt chính xác hành vi của 5 combinators qua bảng ma trận.</div>
+    <div>&#9989; Tự tay viết được polyfill <code>myAll</code> và <code>myAllSettled</code> với kỹ thuật Reference Counter.</div>
+    <div>&#9989; Giải thích được Deferred Pattern qua <code>Promise.withResolvers</code>.</div>
+    <div>&#9989; Chọn đúng combinator cho từng tình huống thực tế trong phỏng vấn.</div>
+    <div>&#9989; Toàn bộ 127 unit tests trong thư mục <code>practice</code> đã chạy XANH hoàn toàn.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 20 · <code>AbortController</code> &amp; <code>AbortSignal</code>: Hủy request, xử lý Race Conditions &amp; Stale Responses</div>
+    <p class="nd">Kiểm soát vòng đời của các async operations với AbortSignal, xử lý tình huống người dùng gõ nhanh tạo ra nhiều request đồng thời và tránh hiện tượng Stale Closure trong data fetching.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0018-promise-architecture.html">&#8592; Bài 18</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="#" class="disabled">Sau &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng 7 bài test combinators và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>

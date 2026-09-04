@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bài 39 · ES6+ Syntax thiết yếu cho React (Destructuring, Spread, Rest &amp; Modern Operators)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<div class="wrap">
+
+  <span class="lesson-tag">Module 11 · Bài 39</span>
+  <h1>Bài 39 · ES6+ Syntax thiết yếu cho React: Destructuring, Spread, Rest &amp; Modern Operators</h1>
+  <p class="subtitle">Làm chủ các cú pháp JavaScript hiện đại được sử dụng hàng ngày trong React: Bóc tách Props và Custom Hooks (Destructuring), tính bất biến của State (Immutability via Spread), xử lý Form động (Computed Property Names), và bẫy giá trị falsy 0 với Nullish Coalescing (??).</p>
+  <p class="meta-line">&#9203; ~25 phút &middot; &#127919; Mục tiêu: Viết code React sạch, ngắn gọn, chuẩn React 19 và tránh 100% các lỗi mutation state hoặc render nhầm giá trị số 0.</p>
+
+  <!-- BẮC CẦU TỪ MODULE 10 -->
+  <div class="callout bridge">
+    <div class="ct">&#127753; Cầu nối bước vào Module 11: JavaScript nền tảng cho React</div>
+    <p>Chào mừng bạn đến với Module 11 — module kết nối toàn bộ sức mạnh JavaScript Core với hệ sinh thái React. Tại đây, chúng ta sẽ mổ xẻ cách React ứng dụng từng tính năng ES6+ để quản lý State, Props, Side Effects và JSX Rendering.</p>
+  </div>
+
+  <!-- PHẦN 1: PROPS DESTRUCTURING -->
+  <h2>1. Bóc tách Props: Giá trị mặc định, Đổi tên &amp; Rest Props</h2>
+  <p>Trong React Component, destructuring giúp code tường minh và dễ đọc hơn rất nhiều so với việc lặp lại <code>props.something</code>:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Clean Props Destructuring Pattern</span>
+    <pre><code><span class="kw">function</span> <span class="fn">Button</span>({
+  title = <span class="str">'Submit'</span>,               <span class="cmt">// 1. Default Value khi prop bị undefined</span>
+  variant: btnVariant = <span class="str">'primary'</span>, <span class="cmt">// 2. Aliasing (đổi tên biến để tránh trùng lặp)</span>
+  onClick,
+  ...restProps                     <span class="cmt">// 3. Rest Parameters gom tất cả props còn lại (aria-*, id, style...)</span>
+}) {
+  <span class="kw">return</span> (
+    &lt;<span class="kw">button</span> className={`btn btn-${btnVariant}`} onClick={onClick} {...restProps}&gt;
+      {title}
+    &lt;/<span class="kw">button</span>&gt;
+  );
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 2: STATE IMMUTABILITY VỚI SPREAD OPERATOR -->
+  <h2>2. Quản lý State bất biến (Immutability) với Spread Operator (<code>...</code>)</h2>
+  <p>React phụ thuộc vào <strong>Shallow Comparison (Object.is)</strong> để quyết định re-render. Việc đột biến trực tiếp object (Mutation) sẽ khiến React bỏ qua re-render hoặc sinh ra bug không thể dự đoán:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; ĐÚNG vs SAI khi cập nhật Nested State</span>
+    <pre><code><span class="cmt">// ❌ SAI HOÀN TOÀN: Trực tiếp mutate state cũ</span>
+<span class="cmt">// prevState.user.profile.theme = 'dark'; setState(prevState); // React KHÔNG re-render!</span>
+
+<span class="cmt">// ✅ ĐÚNG CHUẨN REACT: Tạo shallow copy tại từng tầng có sự thay đổi</span>
+<span class="fn">setState</span>(prev =&gt; ({
+  ...prev,
+  user: {
+    ...prev.user,
+    profile: {
+      ...prev.user.profile,
+      theme: <span class="str">'dark'</span>
+    }
+  }
+}));</code></pre>
+  </div>
+
+  <!-- PHẦN 3: COMPUTED PROPERTY NAMES CHO DYNAMIC FORM -->
+  <h2>3. Xử lý Form động với Computed Property Names <code>[name]: value</code></h2>
+  <p>Thay vì viết 10 hàm <code>handleNameChange</code>, <code>handleEmailChange</code>..., bạn chỉ cần 1 hàm duy nhất xử lý toàn bộ form:</p>
+
+  <div class="code-block">
+    <span class="code-label">JavaScript &mdash; Unified Form Change Handler</span>
+    <pre><code><span class="kw">const</span> [formData, setFormData] = <span class="fn">useState</span>({ username: <span class="str">''</span>, email: <span class="str">''</span>, subscribe: <span class="kw">false</span> });
+
+<span class="kw">function</span> <span class="fn">handleChange</span>(e) {
+  <span class="kw">const</span> { name, value, type, checked } = e.target;
+  <span class="fn">setFormData</span>(prev =&gt; ({
+    ...prev,
+    [name]: type === <span class="str">'checkbox'</span> ? checked : value <span class="cmt">// Computed property name</span>
+  }));
+}</code></pre>
+  </div>
+
+  <!-- PHẦN 4: NULLISH COALESCING (??) VS LOGICAL OR (||) -->
+  <h2>4. Bẫy giao diện: Nullish Coalescing (<code>??</code>) vs Logical OR (<code>||</code>)</h2>
+  <table class="data">
+    <thead>
+      <tr><th>Toán tử</th><th>Điều kiện kích hoạt Fallback</th><th>Hành vi với số <code>0</code>, chuỗi rỗng <code>""</code>, <code>false</code></th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Logical OR (<code>||</code>)</strong></td>
+        <td>Bất kỳ giá trị <strong>Falsy</strong> nào (<code>null</code>, <code>undefined</code>, <code>0</code>, <code>false</code>, <code>""</code>, <code>NaN</code>).</td>
+        <td><strong>BỊ GHI ĐÈ:</strong> <code>0 || 10</code> trả về <code>10</code>. Khiến giỏ hàng có 0 sản phẩm hiển thị thành 10!</td>
+      </tr>
+      <tr>
+        <td><strong>Nullish Coalescing (<code>??</code>)</strong></td>
+        <td>Chỉ kích hoạt khi giá trị là <strong><code>null</code> hoặc <code>undefined</code> (Nullish)</strong>.</td>
+        <td><strong>BẢO TOÀN:</strong> <code>0 ?? 10</code> trả về đúng <code>0</code>. Đây là toán tử bắt buộc dùng khi render UI counts!</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PHẦN 5: QUIZZES -->
+  <h2>5. Kiểm tra phản xạ tức thì (Interactive Quizzes)</h2>
+
+  <div class="quiz">
+    <h3>&#129504; Kiểm tra nhanh (Feedback tức thì)</h3>
+    <div class="q">Câu 1. Bạn muốn hiển thị số lượng tin nhắn chưa đọc từ prop <code>unreadCount</code>. Nếu không có giá trị thì hiển thị mặc định 0. Cú pháp nào sau đây an toàn nhất?</div>
+    <button class="opt" data-correct="true"  data-explain="Chính xác! unreadCount ?? 0 chỉ gán 0 khi prop là null/undefined, bảo toàn chính xác giá trị số 0 nếu người dùng đã đọc hết tin nhắn.">A. unreadCount ?? 0</button>
+    <button class="opt" data-correct="false" data-explain="Sai! Toán tử || coi 0 là falsy nên unreadCount = 0 sẽ bị nhảy fallback.">B. unreadCount || 0</button>
+    <button class="opt" data-correct="false" data-explain="Sai!">C. !unreadCount &amp;&amp; 0</button>
+    <div class="feedback"></div>
+  </div>
+
+  <!-- PHẦN 6: CHECKLIST -->
+  <h2>6. Checklist tự kiểm chứng — Bài 39</h2>
+  <div class="checklist">
+    <div>&#9989; Bóc tách props thành thạo với default values, aliasing và rest parameters.</div>
+    <div>&#9989; Luôn cập nhật state theo nguyên tắc <strong>Immutability (Bất biến)</strong> với Spread operator.</div>
+    <div>&#9989; Tối ưu hóa form inputs với <strong>Computed Property Names</strong>.</div>
+    <div>&#9989; Phân biệt chính xác <strong><code>??</code> (Nullish) vs <code>||</code> (Falsy)</strong> khi render giao diện.</div>
+    <div>&#9989; Toàn bộ 40 test suites (243/243 unit tests) trong thư mục <code>practice</code> đã chạy XANH 100%.</div>
+  </div>
+
+  <!-- NEXT BOX -->
+  <div class="next-box">
+    <div class="nl">&#8594; Bài tiếp theo</div>
+    <div class="nt">Bài 40 · Array Methods &amp; Immutability cho React State</div>
+    <p class="nd">Cách sử dụng map, filter, reduce, find, some, every để render danh sách, tính toán derived state và cập nhật mảng state bất biến.</p>
+  </div>
+
+  <!-- ĐIỀU HƯỚNG -->
+  <div class="navbar">
+    <a href="0038-technical-interview-communication.html">&#8592; Bài 38</a>
+    <a href="index.html">&#127968; Mục lục</a>
+    <a href="0040-react-foundations-array-immutability.html">Bài 40 &#8594;</a>
+  </div>
+
+  <p class="try-it">&#128172; <strong>Tôi là người dạy của bạn.</strong> Hãy mở file này trên trình duyệt, chạy <code>npm test</code> trong thư mục <code>practice</code> để kiểm chứng các bài test ES6+ for React và đặt câu hỏi cho tôi !</p>
+
+</div>
+<script src="lesson-enhance.js"></script>
+</body>
+</html>
